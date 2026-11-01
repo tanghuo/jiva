@@ -54,7 +54,7 @@ export function createFileGateway({ workspace, readRoots = [], approve, assertLi
       assertLive(); await target(file, true);
       if ((await snapshot(file)).hash !== before.hash) throw agentError('FILE_CONFLICT', '文件在审批期间发生变化，请重新读取和审批', 409);
       await mkdir(path.dirname(file), { recursive: true }); await target(file, true); assertLive();
-      const temp = path.join(path.dirname(file), `.self-wiki-${randomUUID()}.tmp`);
+      const temp = path.join(path.dirname(file), `.jiva-${randomUUID()}.tmp`);
       try {
         const mode = (await lstat(file).catch(() => null))?.mode;
         await writeFile(temp, afterBytes, { flag: 'wx', ...(mode && { mode }) });

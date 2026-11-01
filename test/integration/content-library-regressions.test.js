@@ -69,7 +69,7 @@ test("trash thumbnails are local-only, preserve original read restrictions and e
   await new Promise((resolve) => blocker.close(resolve));
   assert.equal((await request("api/lan-sharing", "PUT", { autoStart: false, port })).status, 200);
   const lanToken = (await (await request("api/lan-sharing")).json()).token;
-  const lanFetch = (target, options = {}) => fetch(target, { ...options, headers: { "x-self-wiki-lan-token": lanToken, ...options.headers } });
+  const lanFetch = (target, options = {}) => fetch(target, { ...options, headers: { "x-jiva-lan-token": lanToken, ...options.headers } });
   assert.equal((await request("api/lan-sharing", "POST", { enabled: true })).status, 200);
   const lan = `http://127.0.0.1:${port}/`;
   const remote = (await (await lanFetch(new URL("api/elements?scope=trash", lan))).json()).elements[0];

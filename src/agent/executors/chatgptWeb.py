@@ -1,4 +1,4 @@
-"""Self Wiki host for the pinned chatgpt-imagegen web backend (JSON lines)."""
+"""Jiva host for the pinned chatgpt-imagegen web backend (JSON lines)."""
 import argparse
 import importlib.machinery
 import importlib.util
@@ -20,7 +20,7 @@ def emit(kind, **data):
 
 def load_backend():
     source = Path(__file__).parent / "vendor" / "chatgpt-imagegen" / "chatgpt-imagegen"
-    loader = importlib.machinery.SourceFileLoader("self_wiki_imagegen", str(source))
+    loader = importlib.machinery.SourceFileLoader("jiva_imagegen", str(source))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
@@ -40,7 +40,7 @@ class BrowserProcess:
         if self.cancelled.is_set() and "close" not in command:
             raise InterruptedError("网页版生图已停止；已提交的网页任务可能仍会完成")
         if str(command[0]) == self.browser and Path(self.browser).suffix.lower() in (".js", ".mjs", ".cjs"):
-            command = [os.environ["SELF_WIKI_NODE"], *command]
+            command = [os.environ["JIVA_NODE"], *command]
         # Never invoke a shell with a prompt or local path as shell text.
         if Path(str(command[0])).suffix.lower() in (".cmd", ".bat"):
             raise RuntimeError("请指定 chrome-use.exe 或其 JavaScript 入口路径，不能使用批处理启动器")

@@ -108,7 +108,7 @@ export function createTurnChanges({ repo, dataDir }) {
         signal.throwIfAborted();
         if (file.beforeHash === null) await unlink(file.path);
         else {
-          const temp = path.join(path.dirname(file.path), `.self-wiki-undo-${randomUUID()}.tmp`);
+          const temp = path.join(path.dirname(file.path), `.jiva-undo-${randomUUID()}.tmp`);
           try {
             await writeFile(temp, file.before, { flag: 'wx', mode: actual.mode });
             if ((await current(file)).hash !== file.afterHash) throw conflict(`文件已变化，撤销已暂停：${file.displayPath}`);

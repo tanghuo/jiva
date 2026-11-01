@@ -55,5 +55,5 @@
 - 最后补充的历史/工作流/恢复专项 9 项全部通过，含长输出与 Wiki 12000 字契约；摘要明确截取，完整原运行未改写。日志：`.local/agent-workbench-final-contract-tests.log`。
 - 重新执行审批补齐原始提示词/参考图或冻结工作流版本与步骤后，全部工作台专项和浏览器 32 项通过；重新构建、架构检查、打包及真实桌面 smoke 再次通过。日志：`.local/agent-workbench-final-amendment-tests.log`。
 - 构建、架构规则、diff 空白检查通过；Windows 目录包完成，实际 packaged Electron smoke 通过。包内 10 个关键文件 SHA-256 与最终源码相同。
-- [最终验证清单](agent-workbench-final-validation-2026-10-29.json)。可执行文件：`release/win-unpacked/self-wiki.exe`。开关保持默认关闭。未提交、未发布。
+- [最终验证清单](agent-workbench-final-validation-2026-10-29.json)。可执行文件：`release/win-unpacked/jiva.exe`。开关保持默认关闭。未提交、未发布。
 - 已检索旧 ChatService、chatConnection、chatImageExecutor、CodexSession 和 workflow model 调用者：兼容旧 API/关闭开关路径、历史工具和图片执行仍有调用，保留；旧 workflow model 的 hook-only 编排已替换为精确空工具的受限引擎。未删除仍有调用者的兼容代码。

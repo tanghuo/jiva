@@ -36,7 +36,7 @@ test('P0 fixture distinguishes host execution, rejection and load, without claim
   assert.equal(report.p0Complete, false);
   assert.equal(report.p2Blocked, true);
   assert.ok(report.untested.includes('project configuration loading before trust'));
-  assert.ok(!JSON.stringify(report).includes('SELF_WIKI_P0_HOST'), 'No raw response content is persisted');
+  assert.ok(!JSON.stringify(report).includes('JIVA_P0_HOST'), 'No raw response content is persisted');
 });
 
 test('P0 rejects claimed terminal success without a host request and detects hook fail-open side effects', async t => {

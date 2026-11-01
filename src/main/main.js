@@ -43,8 +43,8 @@ async function createMainWindow() {
   if (quitting) return;
   mainWindow = new BrowserWindow({
     width: 1360, height: 920, minWidth: 980, minHeight: 680,
-    title: "self-wiki", backgroundColor: "#f7f8f6", show: !smoke,
-    icon: path.join(appDir, app.isPackaged ? "dist/renderer/brand/self-wiki.ico" : "src/renderer/public/brand/self-wiki.ico"),
+    title: "Jiva", backgroundColor: "#f7f8f6", show: !smoke,
+    icon: path.join(appDir, app.isPackaged ? "dist/renderer/brand/jiva.ico" : "src/renderer/public/brand/jiva.ico"),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(appDir, "src/main/preload.cjs") },
   });
   mainWindow.setMenu(null);
@@ -176,7 +176,7 @@ async function createMainWindow() {
   if (smoke) {
     const result = await mainWindow.webContents.executeJavaScript(`(async () => {
       const instance = await fetch("/api/instance").then(r => { if (!r.ok) throw new Error("instance " + r.status); return r.json(); });
-      if (!document.querySelector('#root') || instance.application !== 'self-wiki') throw new Error('Invalid renderer/API state');
+      if (!document.querySelector('#root') || instance.application !== 'jiva') throw new Error('Invalid renderer/API state');
       const json = async (url, options) => {
         const response = await fetch(url, options);
         if (!response.ok) throw new Error(url + ': ' + await response.text());
@@ -220,7 +220,7 @@ async function handleBackendExit(exited, { code, signal, stderr }) {
   const window = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
   const options = {
     type: "error", buttons: ["重新启动", "退出"], defaultId: 0, cancelId: 1, noLink: true,
-    title: "self-wiki", message: "后台服务意外退出",
+    title: "Jiva", message: "后台服务意外退出",
     detail: `退出代码：${code ?? signal}。正在进行的生成或整理任务会在重启后恢复为中断状态。${stderr ? `\n\n${stderr.slice(-800)}` : ""}`,
   };
   const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options);
@@ -238,7 +238,7 @@ async function handleStartupError(error) {
   console.error(error);
   quitting = true;
   if (backend) await backend.close();
-  if (!smoke) dialog.showErrorBox("self-wiki", error.message);
+  if (!smoke) dialog.showErrorBox("Jiva", error.message);
   app.exit(1);
 }
 

@@ -8,7 +8,7 @@ import { handleAionuiExperimentRoute } from '../../src/server/http/aionuiExperim
 import { terminateProcessTree } from '../../src/agent/executors/processTree.js';
 
 test('experiment does not start without prepared resources', async () => {
-  const service = createAionuiExperiment({ root: path.join(os.tmpdir(), 'self-wiki-missing-aionui'), dataDir: os.tmpdir() });
+  const service = createAionuiExperiment({ root: path.join(os.tmpdir(), 'jiva-missing-aionui'), dataDir: os.tmpdir() });
   assert.equal((await service.status()).prepared, false);
   await assert.rejects(service.launch(), /尚未准备/);
   await service.close();
@@ -28,7 +28,7 @@ test('concurrent opens share one host, exchange separate login cookies, and stop
       if (req.url.includes('qr-token')) res.end(JSON.stringify({data:{token:'fixture'}}));
       else { res.setHeader('set-cookie', ['aionui-session=fixture; Path=/; HttpOnly', 'aionui-refresh=fixture; Path=/api/auth/refresh; HttpOnly']); res.end('{}'); }
     });
-    server.listen(0,'127.0.0.1', () => console.log('SELF_WIKI_AIONUI_READY ' + JSON.stringify({url:'http://127.0.0.1:'+server.address().port, backendPort:server.address().port, agentName:'fixture'})));
+    server.listen(0,'127.0.0.1', () => console.log('JIVA_AIONUI_READY ' + JSON.stringify({url:'http://127.0.0.1:'+server.address().port, backendPort:server.address().port, agentName:'fixture'})));
     process.stdin.resume(); process.stdin.on('end', () => server.close());
   `);
   const service = createAionuiExperiment({ root, dataDir: path.join(root, 'data'), timeoutMs: 3000 });
@@ -54,7 +54,7 @@ test('experiment routes reject LAN callers before consulting the service', async
 });
 
 test('an unprepared experiment answers 409 instead of an internal server error', async () => {
-  const service = createAionuiExperiment({ root: path.join(os.tmpdir(), 'self-wiki-missing-aionui'), dataDir: os.tmpdir() });
+  const service = createAionuiExperiment({ root: path.join(os.tmpdir(), 'jiva-missing-aionui'), dataDir: os.tmpdir() });
   await assert.rejects(service.launch(), error => error.statusCode === 409 && error.code === 'AIONUI_NOT_PREPARED');
   await service.close();
 });
@@ -71,7 +71,7 @@ test('unconfirmed shutdown reports failure, keeps diagnostics and blocks another
     const server = createServer((req,res) => {res.setHeader('content-type','application/json');
       if(req.url.includes('qr-token'))res.end(JSON.stringify({data:{token:'fixture'}}));
       else{res.setHeader('set-cookie',['aionui-session=fixture; Path=/']);res.end('{}');}});
-    server.listen(0,'127.0.0.1',()=>console.log('SELF_WIKI_AIONUI_READY '+JSON.stringify({url:'http://127.0.0.1:'+server.address().port,backendPort:server.address().port})));
+    server.listen(0,'127.0.0.1',()=>console.log('JIVA_AIONUI_READY '+JSON.stringify({url:'http://127.0.0.1:'+server.address().port,backendPort:server.address().port})));
     process.stdin.resume();process.stdin.on('end',()=>server.close());
   `);
   let terminations = 0;

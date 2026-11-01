@@ -10,7 +10,7 @@ import { grokTerminalOperation, powershellUtf8Prefix } from '../src/agent/engine
 import { createProbeTerminalHost } from './lib/probeTerminalHost.mjs';
 
 const clientCapabilities = { fs: { readTextFile: true, writeTextFile: true }, terminal: true };
-const marker = 'SELF_WIKI_P0';
+const marker = 'JIVA_P0';
 
 // This is a synthetic compatibility probe, not a production execution host.
 // Never run it in a user project. No native images or application tools are enabled.
@@ -115,13 +115,13 @@ export async function probeAgentWorkbench({ executable = 'grok', model = 'grok-4
       if (update.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text') text = (text + update.content.text).slice(-16000);
       if (['tool_call', 'tool_call_update'].includes(update.sessionUpdate)) record({ update: update.sessionUpdate, tool: String(update._meta?.['x.ai/tool']?.name || update.toolName || update.kind || '').slice(0, 100), status: update.status });
     } });
-    const init = await client.request('initialize', { protocolVersion: 1, clientCapabilities, clientInfo: { name: 'self-wiki-p0', version: '0.2.0' } });
+    const init = await client.request('initialize', { protocolVersion: 1, clientCapabilities, clientInfo: { name: 'jiva-p0', version: '0.2.0' } });
     report.agentCapabilities = init.agentCapabilities;
     report.agentVersion = init._meta?.agentVersion;
     report.checks.initialize = init.protocolVersion === 1;
     await client.request('authenticate', { methodId: 'cached_token', _meta: { headless: true } });
     report.checks.authenticate = true;
-    const setup = { cwd, mcpServers: [], _meta: { yoloMode: false, autoMode: false, 'x.ai/hooks': { pre_tool_use: [{ hookCallbackIds: ['self-wiki-p0'], timeout: 5 }] } } };
+    const setup = { cwd, mcpServers: [], _meta: { yoloMode: false, autoMode: false, 'x.ai/hooks': { pre_tool_use: [{ hookCallbackIds: ['jiva-p0'], timeout: 5 }] } } };
     const session = await client.request('session/new', setup, timeoutMs);
     sessionId = session.sessionId;
     if (!sessionId) throw new Error('No probe session');

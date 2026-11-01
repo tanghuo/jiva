@@ -93,10 +93,10 @@ export async function createServer(options = {}) {
   const agentTasks = createAgentTaskService({ repo: createAgentTaskRepository(db), sessions: workbenchRepo, store: createAgentArtifactStore(dataDir), wiki, workflow, executionConfig: () => organization.executionConfig(), enabled: () => applicationToolsVerified && agentWorkbench?.status().agentWorkbenchEnabled, imageExecutor: options.workbenchImageExecutor });
   const agentTools = createAgentTools({ wiki, repo: createAgentWikiRepository(db), tasks: agentTasks });
   const artifactInspection = await agentTasks.inspectStorage();
-  if (artifactInspection.unreferenced.length) console.warn(`[self-wiki] Agent artifact inspection: ${artifactInspection.unreferenced.length} unreferenced files preserved; inspect /api/agent/storage-inspection`);
+  if (artifactInspection.unreferenced.length) console.warn(`[jiva] Agent artifact inspection: ${artifactInspection.unreferenced.length} unreferenced files preserved; inspect /api/agent/storage-inspection`);
   agentWorkbench = await createAgentWorkbenchService({ repo: workbenchRepo, dataDir, wiki, executionConfig: () => organization.executionConfig(), initiallyEnabled: options.agentWorkbenchEnabled !== false, openEngine: options.openWorkbenchEngine, tools: agentTools, tasks: agentTasks, commandStore: createAgentCommandStore(dataDir), applicationToolsVerified, codexVerified: options.agentCodexWorkbenchEnabled !== false });
   agentTasks.schedule();
-  const instance = { application: "self-wiki", protocolVersion: 1, instanceId: randomUUID(), dataDir };
+  const instance = { application: "jiva", protocolVersion: 1, instanceId: randomUUID(), dataDir };
   const aionuiExperiment = createAionuiExperiment({ root: projectRoot, dataDir });
   const quota = await createQuotaService({repo:createQuotaRepository(db),dataDir,executionConfig:()=>organization.executionConfig(),...(options.quotaReaders ? {readers:options.quotaReaders} : {})});
   const services = {
@@ -126,7 +126,7 @@ export async function createServer(options = {}) {
   const server = createHttpServer((req, res) => {
     const running = handleRequest(req, res);
     requests.add(running);
-    running.finally(() => requests.delete(running)).catch((error) => console.error("[self-wiki] request failed:", error?.stack || error));
+    running.finally(() => requests.delete(running)).catch((error) => console.error("[jiva] request failed:", error?.stack || error));
   });
   let actualPort;
   try {
@@ -195,7 +195,7 @@ export async function createServer(options = {}) {
     organization.initialize({ url: instance.url, instanceId: instance.instanceId });
     videoAnalysis.start();
     workflow.start();
-    wiki.startPreviews().catch((error) => console.error("[self-wiki] preview warming failed:", error?.stack || error));
+    wiki.startPreviews().catch((error) => console.error("[jiva] preview warming failed:", error?.stack || error));
     if (sharing.status().autoStart) await sharing.setEnabled(true).catch(() => {});
   } catch (error) { await app.close(); throw error; }
   return app;
@@ -213,8 +213,8 @@ async function runCli() {
   }
   // Background failures are logged and the API keeps serving; a synchronous crash
   // leaves state unknown, so exit and let the desktop shell offer a restart.
-  process.on("unhandledRejection", (reason) => console.error("[self-wiki] unhandled rejection:", reason?.stack || reason));
-  process.on("uncaughtException", (error) => { console.error("[self-wiki] uncaught exception:", error?.stack || error); process.exit(70); });
+  process.on("unhandledRejection", (reason) => console.error("[jiva] unhandled rejection:", reason?.stack || reason));
+  process.on("uncaughtException", (error) => { console.error("[jiva] uncaught exception:", error?.stack || error); process.exit(70); });
   const server = await createServer(options);
   const close = () => server.close().then(() => { if (process.connected) process.disconnect(); });
   process.once("SIGINT", close);
@@ -222,7 +222,7 @@ async function runCli() {
   process.on("message", (message) => { if (message?.type === "shutdown") void close(); });
   process.once("disconnect", close);
   process.send?.({ type: "ready", url: server.url, bootstrapCode: server.createBootstrapCode() });
-  console.log(`self-wiki API running at ${server.url}`);
+  console.log(`Jiva API running at ${server.url}`);
   console.log(`Data: ${server.dataDir}`);
   if (open) {
     const browserUrl = `${server.url}#local-bootstrap=${server.createBootstrapCode()}`;

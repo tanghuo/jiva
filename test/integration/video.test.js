@@ -191,7 +191,7 @@ test("LAN sharing streams and imports videos through the same content API", asyn
   const port = probe.address().port; await new Promise((resolve) => probe.close(resolve));
   assert.equal((await api("lan-sharing", { autoStart: false, port, allowWrite: true }, "PUT")).status, 200);
   const lanToken = (await (await api("lan-sharing", undefined, "GET")).json()).token;
-  const lanFetch = (target, options = {}) => fetch(target, { ...options, headers: { "x-self-wiki-lan-token": lanToken, ...options.headers } });
+  const lanFetch = (target, options = {}) => fetch(target, { ...options, headers: { "x-jiva-lan-token": lanToken, ...options.headers } });
   assert.equal((await api("lan-sharing", { enabled: true })).status, 200);
   const url = `http://127.0.0.1:${port}`;
   const streamed = await lanFetch(`${url}${video.video.url}`, { headers: { range: "bytes=0-7" } });

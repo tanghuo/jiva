@@ -8,8 +8,8 @@ export const workbenchToolIds = Object.freeze(['GrokBuild:read_file', 'GrokBuild
 export function grokWorkbenchProfile({ restricted = false, applicationTools = false } = {}) {
   const textOnly = restricted && !applicationTools;
   return {
-    name: restricted ? textOnly ? 'self-wiki-workflow-text-v2' : 'self-wiki-workflow-text-v1' : 'self-wiki-workbench-v1',
-    description: 'Self Wiki execution host; exact tools verified before prompting',
+    name: restricted ? textOnly ? 'jiva-workflow-text-v2' : 'jiva-workflow-text-v1' : 'jiva-workbench-v1',
+    description: 'Jiva execution host; exact tools verified before prompting',
     // Grok 1.0.70 rejects an empty curated registry during session/new.
     // Register one known tool, then exclude it from the model's callable tools.
     // File access is independently disabled by the restricted ACP client.

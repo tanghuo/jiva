@@ -29,7 +29,7 @@ async function request(url, route, { method = "GET", body, headers = {}, timeout
     const text = await response.text();
     if (response.ok && format === "text") return text;
     if (!response.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
-      throw new CliError("PROTOCOL", "Expected a self-wiki JSON response; check the API URL and restart an older backend", 3);
+      throw new CliError("PROTOCOL", "Expected a Jiva JSON response; check the API URL and restart an older backend", 3);
     }
     try { data = JSON.parse(text); }
     catch { throw new CliError("PROTOCOL", "Server returned invalid JSON", 3); }
@@ -43,17 +43,17 @@ async function request(url, route, { method = "GET", body, headers = {}, timeout
 
 async function identify(url, timeout, headers) {
   const info = await request(url, "/api/instance", { timeout, headers });
-  if (info?.application !== "self-wiki" || info.protocolVersion !== 1 || typeof info.instanceId !== "string" || !info.instanceId || typeof info.dataDir !== "string") {
-    throw new CliError("PROTOCOL", "The endpoint is not a compatible self-wiki backend; restart/update it", 3);
+  if (info?.application !== "jiva" || info.protocolVersion !== 1 || typeof info.instanceId !== "string" || !info.instanceId || typeof info.dataDir !== "string") {
+    throw new CliError("PROTOCOL", "The endpoint is not a compatible Jiva backend; restart/update it", 3);
   }
   return info;
 }
 
 export async function connect(options) {
   const timeout = options.timeout ?? 30000;
-  const explicitUrl = options.url ?? (process.env.SELF_WIKI_URL || undefined);
+  const explicitUrl = options.url ?? (process.env.JIVA_URL || undefined);
   async function credentialHeaders(file, expectedInstanceId) {
-    if (!file) throw new CliError('AUTH_REQUIRED', 'Explicit --url requires --token-file or SELF_WIKI_TOKEN_FILE. For discovery use --data-dir.', 3);
+    if (!file) throw new CliError('AUTH_REQUIRED', 'Explicit --url requires --token-file or JIVA_TOKEN_FILE. For discovery use --data-dir.', 3);
     let saved;
     try { saved = JSON.parse(await readFile(file, 'utf8')); } catch { throw new CliError('AUTH_REQUIRED', 'Cannot read the local credential file; restart the backend and check --token-file.', 3); }
     if (typeof saved.token !== 'string' || !/^[\w-]{43}$/.test(saved.token) || expectedInstanceId && saved.instanceId !== expectedInstanceId) throw new CliError('AUTH_REQUIRED', 'Invalid or stale credential file', 3);
@@ -62,7 +62,7 @@ export async function connect(options) {
   let url, instance, authHeaders;
   if (explicitUrl !== undefined) {
     url = localUrl(explicitUrl);
-    authHeaders = await credentialHeaders(options['token-file'] || process.env.SELF_WIKI_TOKEN_FILE);
+    authHeaders = await credentialHeaders(options['token-file'] || process.env.JIVA_TOKEN_FILE);
     instance = await identify(url, timeout, authHeaders);
   } else {
     const dataDir = path.resolve(options["data-dir"] || process.env.APP_DATA_DIR || path.resolve(import.meta.dirname, "../../data"));
@@ -86,12 +86,12 @@ export async function connect(options) {
       } catch (error) { if (error instanceof CliError) return null; throw error; }
     }));
     const active = candidates.filter(Boolean);
-    if (!active.length) throw new CliError("NOT_RUNNING", `No active self-wiki backend found in ${dataDir}. Start/restart the app or run npm start; use --data-dir for a custom directory or --url for an explicit API origin.`, 3);
+    if (!active.length) throw new CliError("NOT_RUNNING", `No active Jiva backend found in ${dataDir}. Start/restart the app or run npm start; use --data-dir for a custom directory or --url for an explicit API origin.`, 3);
     if (active.length > 1) throw new CliError("AMBIGUOUS_INSTANCE", "Multiple backends are running. Select one with --url.", 3, active.map((entry) => entry.instance));
     ({ url, instance, authHeaders } = active[0]);
   }
   return {
     instance: { ...instance, url },
-    request: (route, options = {}) => request(url, route, { ...options, timeout, headers: { ...options.headers, ...authHeaders, "x-self-wiki-instance": instance.instanceId } }),
+    request: (route, options = {}) => request(url, route, { ...options, timeout, headers: { ...options.headers, ...authHeaders, "x-jiva-instance": instance.instanceId } }),
   };
 }

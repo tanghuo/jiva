@@ -14,7 +14,7 @@ node src/cli/main.js visual search --q '雨夜街道'
 
 `run` 默认继续未完成的分析；`--restart` 创建新分析批次，保留人工修改。`accept/reject` 使用结果的 revision 防止覆盖并发修改。`visual index` 恢复缺失向量；模型或修订变化会使用独立空间。分析服务和视觉模型依赖配置见 [视频自动标注与相似素材](usage.md#视频自动标注与相似素材)。
 
-CLI 通过本地 HTTP 接口操作运行中的 self-wiki。它复用桌面端的业务校验，不直接打开数据库，不触发离线迁移。需要 Node.js 24+。读取、写入、图片与视频导入均不依赖桌面点击操作。
+CLI 通过本地 HTTP 接口操作运行中的 Jiva。它复用桌面端的业务校验，不直接打开数据库，不触发离线迁移。需要 Node.js 24+。读取、写入、图片与视频导入均不依赖桌面点击操作。
 
 ## 启动与连接
 
@@ -30,14 +30,14 @@ node src/cli/main.js elements list --q "资料" --page-size 10
 node src/cli/main.js read 123
 ```
 
-也可用 `npm.cmd run --silent cli -- <命令>`。项目声明了 `self-wiki` npm bin，执行 `npm.cmd link` 后可直接运行 `self-wiki <命令>`。自动化建议直接调用 Node，或为 npm 加 `--silent`，避免 npm 的脚本横幅混入 stdout。
+也可用 `npm.cmd run --silent cli -- <命令>`。项目声明了 `jiva` npm bin，执行 `npm.cmd link` 后可直接运行 `jiva <命令>`。自动化建议直接调用 Node，或为 npm 加 `--silent`，避免 npm 的脚本横幅混入 stdout。
 
 命令名在前，参数和选项在后，例如 `elements get 123 --data-dir "D:\wiki-data"`。全局选项适用于所有操作命令：
 
 | 选项 | 含义 |
 | --- | --- |
-| `--url` | 指定本机 HTTP API 地址；优先于 `SELF_WIKI_URL` 环境变量和自动发现 |
-| `--token-file` | 显式 URL 使用的管理凭据文件；也可用 `SELF_WIKI_TOKEN_FILE` |
+| `--url` | 指定本机 HTTP API 地址；优先于 `JIVA_URL` 环境变量和自动发现 |
+| `--token-file` | 显式 URL 使用的管理凭据文件；也可用 `JIVA_TOKEN_FILE` |
 | `--data-dir` | 从指定目录发现服务；默认 `APP_DATA_DIR`，其次是项目 `data/` |
 | `--timeout` | 每次 HTTP 请求超时毫秒数，默认 30000 |
 | `--pretty` | 格式化 JSON；默认单行 JSON |

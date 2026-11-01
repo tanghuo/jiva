@@ -33,7 +33,7 @@ export async function readGrokQuota(config, context) {
   if (before.team) throw quotaError('TEAM_UNSUPPORTED');
   const client = await startGrokAcp({ ...config,model:config.model || 'grok-4.6' }, { cwd:context.cwd,signal:context.signal,quotaOnly:true });
   try {
-    const init=await client.request('initialize',{ protocolVersion:1,clientCapabilities:{},clientInfo:{name:'self-wiki-quota',version:'1'} },10000);
+    const init=await client.request('initialize',{ protocolVersion:1,clientCapabilities:{},clientInfo:{name:'jiva-quota',version:'1'} },10000);
     if(!init.authMethods?.some(method=>method.id==='cached_token'))throw quotaError('AUTH_REQUIRED');
     // Let the official CLI establish its cached login, as the workbench does.
     // auth.json expiry alone is not proof that the CLI cannot authenticate.

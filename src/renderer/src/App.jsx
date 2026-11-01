@@ -205,9 +205,9 @@ export default function App() {
       setSettingsOpen(true);
     };
     const close = () => setSettingsOpen(false);
-    window.addEventListener("self-wiki-close-settings", close);
-    window.addEventListener("self-wiki-open-settings", open);
-    return () => { window.removeEventListener("self-wiki-open-settings", open); window.removeEventListener("self-wiki-close-settings", close); };
+    window.addEventListener("jiva-close-settings", close);
+    window.addEventListener("jiva-open-settings", open);
+    return () => { window.removeEventListener("jiva-open-settings", open); window.removeEventListener("jiva-close-settings", close); };
   }, []);
   const workspaceNavigation = <>
       <div className="workspace-footer">

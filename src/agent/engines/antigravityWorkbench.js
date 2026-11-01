@@ -17,7 +17,7 @@ export function antigravityModels(session) {
   return { models, defaultModel: models.some(model => model.id === current) ? current : models[0].id };
 }
 async function initialize(client) {
-  const init = await client.request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'self-wiki-workbench', version: '1' } });
+  const init = await client.request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'jiva-workbench', version: '1' } });
   if (init.protocolVersion !== 1 || init.agentInfo?.name !== 'antigravity-acp' || init.agentInfo.version !== antigravityVersion) throw new Error(`Antigravity ACP 版本未验证，请使用 ${antigravityVersion}`);
   return init;
 }

@@ -40,4 +40,4 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'AionUi host build failed' }
   } finally { Pop-Location }
 } finally { $env:BUN_INSTALL_CACHE_DIR = $previousCache }
-Write-Output 'AionUi experiment is ready. Restart self-wiki and open AionUi 实验版 in the sidebar.'
+Write-Output 'AionUi experiment is ready. Restart Jiva and open AionUi 实验版 in the sidebar.'

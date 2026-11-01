@@ -24,7 +24,7 @@ export function createVectorQueries(db, dbPath) {
       else entry.resolve(rows);
     });
     worker.on("error", (error) => {
-      console.error("[self-wiki] vector worker failed; using the main connection:", error?.message || error);
+      console.error("[jiva] vector worker failed; using the main connection:", error?.message || error);
       broken = true; worker = undefined; failAll(error);
     });
     worker.on("exit", () => { worker = undefined; if (!closed) failAll(new Error("向量检索线程已退出")); });

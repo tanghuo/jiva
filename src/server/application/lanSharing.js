@@ -88,7 +88,7 @@ export async function createLanSharing({ dataDir, listAddresses, createHandler }
     const candidate = createServer((req, res) => {
       const running = handler(req, res);
       requests.add(running);
-      running.finally(() => requests.delete(running)).catch((error) => console.error("[self-wiki] LAN request failed:", error?.stack || error));
+      running.finally(() => requests.delete(running)).catch((error) => console.error("[jiva] LAN request failed:", error?.stack || error));
     });
     await new Promise((resolve, reject) => {
       candidate.once("error", reject);

@@ -592,7 +592,7 @@ test("LAN canvas supports editing, filters trash and fits a phone viewport", opt
   await new Promise((resolve) => listener.close(resolve));
   await request("api/lan-sharing", "PUT", { port, autoStart: false, allowWrite: true });
   const lanToken = (await (await request("api/lan-sharing")).json()).token;
-  const lanFetch = (target, options = {}) => fetch(target, { ...options, headers: { "x-self-wiki-lan-token": lanToken, ...options.headers } });
+  const lanFetch = (target, options = {}) => fetch(target, { ...options, headers: { "x-jiva-lan-token": lanToken, ...options.headers } });
   await request("api/lan-sharing", "POST", { enabled: true });
   const lan = `http://127.0.0.1:${port}`;
   await page.setViewportSize({ width: 390, height: 844 });

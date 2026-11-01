@@ -42,7 +42,7 @@ export async function describeGrokWorkbench(settings = {}, { cwd, signal } = {})
     cwd, signal, onNotification() {}, onRequest: async () => { throw new Error('读取模型列表时不接受宿主请求'); }, onExit() {},
   });
   try {
-    const init = await client.request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'self-wiki-workbench', version: '1' } });
+    const init = await client.request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'jiva-workbench', version: '1' } });
     if (!init.authMethods?.some(method => method.id === 'cached_token')) throw new Error('请先在本机登录 Grok');
     await client.request('authenticate', { methodId: 'cached_token', _meta: { headless: true } });
     return grokWorkbenchModels(init._meta?.modelState, model);
@@ -89,7 +89,7 @@ export async function openGrokWorkbench(settings, { cwd, neutralCwd, sessionId, 
       }
       return onRequest(method, params);
     } });
-    const init = await client.request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: !restricted, writeTextFile: !restricted }, terminal: !restricted }, clientInfo: { name: 'self-wiki-workbench', version: '1' } });
+    const init = await client.request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: !restricted, writeTextFile: !restricted }, terminal: !restricted }, clientInfo: { name: 'jiva-workbench', version: '1' } });
     if (sdk && init._meta?.['x.ai/mcp/sdk'] !== true) throw new Error('此 Grok 不支持无令牌的本机应用工具通道');
     if (!init.authMethods?.some(method => method.id === 'cached_token')) throw new Error('请先在本机登录 Grok');
     await client.request('authenticate', { methodId: 'cached_token', _meta: { headless: true } });

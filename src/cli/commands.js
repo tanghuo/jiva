@@ -9,8 +9,8 @@ const input = { input: string("UTF-8 JSON object file, or - for stdin"), data: s
 const content = { ...input, body: string("Full text, preserving whitespace"), "body-file": string("UTF-8 text file, or - for stdin"), tag: string("Tag; repeat to set multiple tags", { multiple: true }) };
 
 export const globalOptions = {
-  'token-file': string('Local management credential file for explicit --url; otherwise SELF_WIKI_TOKEN_FILE'),
-  url: string("Explicit local API origin; otherwise SELF_WIKI_URL or discovery in the data directory"),
+  'token-file': string('Local management credential file for explicit --url; otherwise JIVA_TOKEN_FILE'),
+  url: string("Explicit local API origin; otherwise JIVA_URL or discovery in the data directory"),
   "data-dir": string("Discovery directory; otherwise APP_DATA_DIR or project data/"),
   timeout: integer("Timeout per HTTP request in milliseconds (default 30000)", 1, 2147483647),
   json: flag("JSON output (already the default)"),
@@ -84,8 +84,8 @@ export const commands = [
 
 export function schema(selected = commands) {
   return {
-    schemaVersion: 1, application: "self-wiki", usage: "self-wiki <command> [arguments] [options]",
-    discovery: "Explicit --url > SELF_WIKI_URL > active instance in --data-dir / APP_DATA_DIR / project data. Multiple active instances require --url. Start or restart the app/backend to publish discovery information.",
+    schemaVersion: 1, application: "jiva", usage: "jiva <command> [arguments] [options]",
+    discovery: "Explicit --url > JIVA_URL > active instance in --data-dir / APP_DATA_DIR / project data. Multiple active instances require --url. Start or restart the app/backend to publish discovery information.",
     output: { success: "stdout: {ok:true,data:...}", failure: "stderr: {ok:false,error:{code,message,status?,details?}}; stdout is empty", exitCodes: { 0: "success / job accepted", 1: "API rejection, partial result or file I/O failure", 2: "invalid command or input", 3: "connection, timeout, discovery or protocol failure" } },
     semantics: [
       "Commands do not start a server or open/migrate SQLite. CLI and UI use the same HTTP service.",

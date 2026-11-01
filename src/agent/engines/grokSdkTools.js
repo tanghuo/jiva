@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 export function createGrokSdkTools(tools, call) {
   const serverId = randomUUID(); let turn, sequence = 0, initialized = false;
   return {
-    definition: { name: `self_wiki_${serverId.replaceAll('-', '')}`, serverId },
+    definition: { name: `jiva_${serverId.replaceAll('-', '')}`, serverId },
     get initialized() { return initialized; },
     begin(value) { turn = value; }, end() { turn = undefined; },
     async request(params) {
@@ -13,7 +13,7 @@ export function createGrokSdkTools(tools, call) {
       const message = params.message;
       if (!message || message.jsonrpc !== '2.0') throw new Error('应用工具消息无效');
       const result = value => ({ jsonrpc: '2.0', id: message.id, result: value });
-      if (message.method === 'initialize') { initialized = true; return result({ protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'self-wiki', version: '1' } }); }
+      if (message.method === 'initialize') { initialized = true; return result({ protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'jiva', version: '1' } }); }
       if (message.method?.startsWith('notifications/')) return {};
       if (message.method === 'ping') return result({});
       if (message.method === 'tools/list') return result({ tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });

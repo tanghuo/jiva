@@ -55,7 +55,7 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
   try {
     client = await startCodexAppServer(config, { cwd: neutralCwd, signal, workbench: true, configOverrides: overrides(), onExit(error) { const failure = authMessage(error || new Error('Codex 连接断开')); completion?.reject(failure); onExit(failure); },
       async onToolCall(params) {
-        if (!live(params) || params.namespace && params.namespace !== 'self_wiki' || !tools.some(tool => tool.name === params.tool)) throw new Error('工作台工具不属于活动轮次或未声明');
+        if (!live(params) || params.namespace && params.namespace !== 'jiva' || !tools.some(tool => tool.name === params.tool)) throw new Error('工作台工具不属于活动轮次或未声明');
         const value = await onToolCall({ name: params.tool, input: params.arguments, callId: params.callId });
         if (!live(params)) throw new Error('工具结果所属轮次已结束');
         return { success: true, contentItems: value?.content ? [{ type: 'inputText', text: JSON.stringify({ ...value, content: undefined }) }, ...value.content.map(item => item.type === 'image' ? { type: 'inputImage', imageUrl: `data:${item.mimeType};base64,${item.data}` } : { type: 'inputText', text: item.text || '' })] : [{ type: 'inputText', text: JSON.stringify(value) }] };

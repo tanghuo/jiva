@@ -8,7 +8,7 @@ import electron from "electron";
 import { _electron } from "playwright-core";
 
 const root = path.resolve(import.meta.dirname, "..");
-const dir = await mkdtemp(path.join(os.tmpdir(), "self-wiki-single-instance-"));
+const dir = await mkdtemp(path.join(os.tmpdir(), "jiva-single-instance-"));
 const args = [root, `--user-data-dir=${path.join(dir, "profile")}`];
 const env = { ...process.env, APP_DATA_DIR: path.join(dir, "data") };
 for (const key of ["ELECTRON_RUN_AS_NODE", "EXTERNAL_API_URL", "VITE_DEV_SERVER_URL", "API_PORT", "NODE_BINARY"]) delete env[key];
@@ -52,6 +52,6 @@ try {
   console.log("single-instance smoke ok: duplicate exits, window restores/focuses, window close stops desktop and API");
 } finally {
   if (desktop && child?.exitCode === null) await desktop.close();
-  if (path.dirname(dir) !== path.resolve(os.tmpdir()) || !path.basename(dir).startsWith("self-wiki-single-instance-")) throw new Error("Invalid temporary cleanup path");
+  if (path.dirname(dir) !== path.resolve(os.tmpdir()) || !path.basename(dir).startsWith("jiva-single-instance-")) throw new Error("Invalid temporary cleanup path");
   await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }

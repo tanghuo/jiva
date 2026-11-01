@@ -1,4 +1,4 @@
-export const REFERENCE_DRAG_TYPE = "application/x-self-wiki-reference";
+export const REFERENCE_DRAG_TYPE = "application/x-jiva-reference";
 
 export function readReferenceDrag(dataTransfer) {
   try {

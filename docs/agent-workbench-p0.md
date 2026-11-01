@@ -56,7 +56,7 @@
 
 ```json
 {
-  "command": "D:\\soft\\node.exe -e \"process.stdout.write('SELF_WIKI_P0_COMMAND')\"",
+  "command": "D:\\soft\\node.exe -e \"process.stdout.write('JIVA_P0_COMMAND')\"",
   "args": []
 }
 ```

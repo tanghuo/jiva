@@ -13,7 +13,7 @@ function cli(args) {
   if (args.includes('--url') && !args.includes('--token-file')) args = [...args, '--token-file', tokenFileForUrl(url) || path.resolve('test/fixtures/local-credentials.json')];
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.resolve("src/cli/main.js"), ...args], {
-      env: { ...process.env, SELF_WIKI_URL: "", APP_DATA_DIR: "" }, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, JIVA_URL: "", APP_DATA_DIR: "" }, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "", stderr = "";
     child.stdout.on("data", (chunk) => { stdout += chunk; });
@@ -56,13 +56,13 @@ test("CLI streams video upload/download with Unicode metadata and cleans interru
   const server = createServer(async (req, res) => {
     if (req.url === "/api/instance") {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ application: "self-wiki", protocolVersion: 1, instanceId: "video-cli-test", dataDir: dir }));
+      res.end(JSON.stringify({ application: "jiva", protocolVersion: 1, instanceId: "video-cli-test", dataDir: dir }));
     } else if (req.url === "/api/videos") {
       const hash = createHash("sha256");
       let size = 0, chunks = 0;
       for await (const chunk of req) { hash.update(chunk); size += chunk.length; chunks++; }
       received = { digest: hash.digest("hex"), size, chunks, name: decodeURIComponent(req.headers["x-file-name"]),
-        tags: JSON.parse(Buffer.from(req.headers["x-video-tags"], "base64").toString("utf8")), instance: req.headers["x-self-wiki-instance"] };
+        tags: JSON.parse(Buffer.from(req.headers["x-video-tags"], "base64").toString("utf8")), instance: req.headers["x-jiva-instance"] };
       res.writeHead(201, { "content-type": "application/json" });
       res.end(JSON.stringify({ id: 1, kind: "video", video: { url: "/api/elements/1/video", originalName: received.name, mimeType: "video/mp4", byteSize: size }, tags: received.tags }));
     } else if (req.url === "/api/elements/1/download") {

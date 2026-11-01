@@ -26,13 +26,13 @@ async function handle(message) {
   if (text.startsWith('Read ')) {
     const result = await request('fs/read_text_file', { path: path.join(cwd, 'read.txt') }); answer = result.result?.content || 'failed';
   } else if (text.startsWith('Using ')) {
-    await request('fs/write_text_file', { path: path.join(cwd, 'write.txt'), content: 'SELF_WIKI_P0_WRITE\n' });
+    await request('fs/write_text_file', { path: path.join(cwd, 'write.txt'), content: 'JIVA_P0_WRITE\n' });
   } else if (text.startsWith('Run this exact executable') && text.includes('process.stdout.write')) {
-    if (bypass) answer = 'SELF_WIKI_P0_COMMAND';
+    if (bypass) answer = 'JIVA_P0_COMMAND';
     else {
       const created = await request('terminal/create', shellMode
-        ? { command: `& '${process.execPath}' -e "process.stdout.write('SELF_WIKI_P0_COMMAND')"`, cwd, env: [{ name: 'FORCE_COLOR', value: '1' }, { name: 'GRADLE_OPTS', value: 'must-not-be-inherited' }] }
-        : { command: process.execPath, args: ['-e', "process.stdout.write('SELF_WIKI_P0_COMMAND')"], cwd });
+        ? { command: `& '${process.execPath}' -e "process.stdout.write('JIVA_P0_COMMAND')"`, cwd, env: [{ name: 'FORCE_COLOR', value: '1' }, { name: 'GRADLE_OPTS', value: 'must-not-be-inherited' }] }
+        : { command: process.execPath, args: ['-e', "process.stdout.write('JIVA_P0_COMMAND')"], cwd });
       if (created.result) {
         const terminalId = created.result.terminalId;
         await request('terminal/wait_for_exit', { terminalId });

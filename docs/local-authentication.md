@@ -18,7 +18,7 @@ node src/cli/main.js pair --data-dir "D:\wiki-data"
 
 优先使用 `--data-dir` 自动发现。后端在数据目录 `.runtime/credentials-<实例ID>.json` 保存 CLI 独立管理 Bearer；Unix 权限为 0600，Windows 移除继承权限并仅授予当前用户和 SYSTEM。正常退出清除凭据；重启生成新凭据。公开的实例记录与 API 响应不含管理 Bearer。
 
-显式 `--url` 或 `SELF_WIKI_URL` 需要指定 `--token-file`，也可用 `SELF_WIKI_TOKEN_FILE` 指向该文件：
+显式 `--url` 或 `JIVA_URL` 需要指定 `--token-file`，也可用 `JIVA_TOKEN_FILE` 指向该文件：
 
 ```powershell
 node src/cli/main.js status --data-dir "D:\wiki-data"

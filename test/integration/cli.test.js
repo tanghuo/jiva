@@ -14,7 +14,7 @@ function cli(args, input = "", env = {}) {
   if (args.includes('--url') && !args.includes('--token-file')) args = [...args, '--token-file', tokenFileForUrl(url) || path.resolve('test/fixtures/local-credentials.json')];
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [entry, ...args.map(String)], {
-      env: { ...process.env, SELF_WIKI_URL: "", APP_DATA_DIR: "", ...env }, windowsHide: true, stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, JIVA_URL: "", APP_DATA_DIR: "", ...env }, windowsHide: true, stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "", stderr = "";
     child.stdout.on("data", (chunk) => { stdout += chunk; });
@@ -65,7 +65,7 @@ test("CLI help/schema work offline and usage failures keep stdout clean", async 
   for (const args of [[], ["--help"], ["help", "elements", "create"], ["elements", "--help"], ["elements", "get", "--help"]]) {
     const result = await cli(args);
     assert.equal(result.code, 0, result.stderr);
-    assert.match(result.stdout, /self-wiki/);
+    assert.match(result.stdout, /jiva/);
   }
   for (const args of [
     ["unknown"], ["elements", "get", "0"], ["elements", "get", "9007199254740992"], ["elements", "get", "1", "2"],
@@ -194,7 +194,7 @@ test("CLI discovery verifies identity, rejects ambiguity and cleans each instanc
   await writeFile(path.join(runtimeDir, "server-dead.json"), JSON.stringify({ ...record, instanceId: "stale" }));
   success(await cli(args));
   const mismatch = await fetch(new URL("/api/elements", app.url), {
-    method: "POST", headers: { "content-type": "application/json", "x-self-wiki-instance": "stale" }, body: '{"body":"must not exist"}',
+    method: "POST", headers: { "content-type": "application/json", "x-jiva-instance": "stale" }, body: '{"body":"must not exist"}',
   });
   assert.equal(mismatch.status, 409);
   const second = await createServer({ port: 0, dataDir: dir });
@@ -213,7 +213,7 @@ test("CLI does not follow redirects or retry uncertain writes, and bounds reques
   const server = createHttpServer((req, res) => {
     if (req.url === "/api/instance") {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ application: "self-wiki", protocolVersion: 1, instanceId: "fake-test-instance", dataDir: os.tmpdir() }));
+      res.end(JSON.stringify({ application: "jiva", protocolVersion: 1, instanceId: "fake-test-instance", dataDir: os.tmpdir() }));
     } else if (req.method === "POST") { writes++; req.resume(); req.socket.destroy(); }
     else if (req.url === "/api/elements/1") { res.writeHead(302, { location: "/api/instance" }); res.end(); }
     // /api/elements intentionally never responds.

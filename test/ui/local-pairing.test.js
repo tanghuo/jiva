@@ -24,7 +24,7 @@ test('a browser pairs once, removes fragment secrets, keeps HttpOnly auth and re
   const privateRequests = [];
   page.on('request', request => { if (new URL(request.url()).pathname === '/api/elements') privateRequests.push(request.url()); });
   await page.goto(app.url);
-  await page.getByRole('heading', { name: '连接本机 self-wiki' }).waitFor();
+  await page.getByRole('heading', { name: '连接本机 Jiva' }).waitFor();
   assert.deepEqual(privateRequests, []);
   assert.equal(await page.evaluate(async () => (await fetch('/api/instance')).status), 401);
   await page.getByRole('textbox', { name: '一次性配对码或链接' }).fill('invalid-code');
@@ -34,12 +34,12 @@ test('a browser pairs once, removes fragment secrets, keeps HttpOnly auth and re
   await page.goto(`${app.url}#local-bootstrap=${code}`);
   await page.locator('.wiki-shell').waitFor();
   assert.ok(!page.url().includes(code));
-  assert.equal(await page.evaluate(() => document.cookie.includes('self_wiki_local')), false);
+  assert.equal(await page.evaluate(() => document.cookie.includes('jiva_local')), false);
   assert.equal(await page.evaluate(async () => (await fetch('/api/instance')).status), 200);
   await page.reload(); await page.locator('.wiki-shell').waitFor();
   const unpaired = await browser.newPage();
   await unpaired.goto(`${app.url}#local-bootstrap=${code}`);
-  await unpaired.getByRole('heading', { name: '连接本机 self-wiki' }).waitFor();
+  await unpaired.getByRole('heading', { name: '连接本机 Jiva' }).waitFor();
   assert.equal(await unpaired.evaluate(async () => (await fetch('/api/instance')).status), 401);
   assert.ok(!unpaired.url().includes(code));
 });

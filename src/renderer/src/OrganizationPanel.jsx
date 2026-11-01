@@ -110,7 +110,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         {(focus === "all" || focus === "connection") && <>
         {focus === "connection" && <header className="settings-section-header"><h3>Agent 连接</h3></header>}
                 <WorkbenchConnectionSettings value={config.chat} locked={locked} onChange={(chat) => setConfig((current) => ({ ...current, chat }))} />
-        <a className="button" href="#workbench" onClick={() => window.dispatchEvent(new Event("self-wiki-close-settings"))}>打开工作台检测连接</a>
+        <a className="button" href="#workbench" onClick={() => window.dispatchEvent(new Event("jiva-close-settings"))}>打开工作台检测连接</a>
         <div className="wiki-actions"><button disabled={locked} onClick={() => mutate("probe")}>检测并启动整理程序</button></div>
         <fieldset className="settings-group"><legend>连接参数</legend>
         {focus === "connection" && executorSelect}

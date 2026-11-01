@@ -138,7 +138,7 @@
     },
     {
       "phase": "terminal",
-      "command": "& \"D:\\soft\\node.exe\" -e \"process.stdout.write('SELF_WIKI_P0_COMMAND')\"",
+      "command": "& \"D:\\soft\\node.exe\" -e \"process.stdout.write('JIVA_P0_COMMAND')\"",
       "args": [],
       "envNames": [
         "CARGO_TERM_PROGRESS_WIDTH",
@@ -167,7 +167,7 @@
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        "& \"D:\\soft\\node.exe\" -e \"process.stdout.write('SELF_WIKI_P0_COMMAND')\""
+        "& \"D:\\soft\\node.exe\" -e \"process.stdout.write('JIVA_P0_COMMAND')\""
       ],
       "envNames": [
         "CARGO_TERM_PROGRESS_WHEN",

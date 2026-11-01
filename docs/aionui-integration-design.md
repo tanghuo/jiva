@@ -1,12 +1,12 @@
 # AionUi 复用与内嵌方案
 
-日期：2026-10-31。范围：评估如何使 self-wiki 工作台尽可能直接使用 AionUi。本文完成源码调查与分阶段决策；尚未完成运行验证或产品替换。
+日期：2026-10-31。范围：评估如何使 Jiva 工作台尽可能直接使用 AionUi。本文完成源码调查与分阶段决策；尚未完成运行验证或产品替换。
 
 实施补记：当前侧栏实验入口已改为同一窗口内的 WebContentsView；浏览器使用 iframe，保留会话用于来回比较。Grok 已补齐原工作台代理配置，Grok 与官方 ACP 均通过同窗口真实回复和界面显示验证。原独立窗口脚本仅作可选入口，业务工具桥接仍未实施。操作与边界见 [实验版说明](aionui-experiment.md)。以下各阶段保留原设计语境，不作为本次已完成范围的声明。
 
 ## 目标与推荐结论
 
-优先采用 **AionUi 完整 WebUI + AionCore 独立后端，内嵌到 self-wiki 桌面窗口**。通用工作台直接沿用上游界面和执行体系，self-wiki 负责 Wiki、媒体、已有生图与工作流能力。保持上游目录与依赖独立，只维护少量集成补丁。
+优先采用 **AionUi 完整 WebUI + AionCore 独立后端，内嵌到 Jiva 桌面窗口**。通用工作台直接沿用上游界面和执行体系，Jiva 负责 Wiki、媒体、已有生图与工作流能力。保持上游目录与依赖独立，只维护少量集成补丁。
 
 用户已明确接受内嵌，并希望尽可能对齐 AionUi。第一阶段可以直接开展独立运行及内嵌验证，无需为这一方向重复征求授权。通过验证后再切换新会话入口。
 
@@ -18,7 +18,7 @@
 - 检查提交：`11cd2a9a20d1e033157636efc570b41384c66d85`，`package.json` 版本 `2.2.2`。后续实施应锁定经实测的前后端组合，不能跟随浮动 main/latest。
 - `scripts/webui.ts`：无需启动 Electron 的 WebUI 入口；可指定静态资源、后端程序、数据目录和端口。
 - `packages/web-host/src/index.ts`：`startWebHost` 组合后端启动器与静态服务，返回地址及停止句柄。
-- `packages/web-host/src/static-server.ts`：提供 SPA 与 API/WebSocket 转发；不包含 self-wiki 业务。
+- `packages/web-host/src/static-server.ts`：提供 SPA 与 API/WebSocket 转发；不包含 Jiva 业务。
 - `packages/web-host/package.json`：该包为 private workspace 包，不应假设可直接通过 npm 安装公开稳定 SDK。
 - `packages/shared-scripts/src/prepare-aioncore.js`：发行资源包含后端程序、manifest 和 managed-resources；只拿一个 exe 不能视为完整部署。
 - `packages/desktop/src/renderer/pages/guid/`：截图首页实际组件所在地；对齐首页可以直接沿用这些组件。
@@ -31,9 +31,9 @@
 
 在线来源：[AionUi](https://github.com/iOfficeAI/AionUi)、[WebUI 入口](https://github.com/iOfficeAI/AionUi/blob/11cd2a9a20d1e033157636efc570b41384c66d85/scripts/webui.ts)、[WebHost](https://github.com/iOfficeAI/AionUi/tree/11cd2a9a20d1e033157636efc570b41384c66d85/packages/web-host)、[AionCore 架构](https://github.com/iOfficeAI/AionCore/blob/main/ARCHITECTURE.zh-CN.md)、[许可](https://github.com/iOfficeAI/AionUi/blob/11cd2a9a20d1e033157636efc570b41384c66d85/LICENSE)。AionCore 架构说明当前后端为 Rust/Axum；其具体发行版本尚未锁定。
 
-### self-wiki 当前边界
+### Jiva 当前边界
 
-- `src/main/main.js:42`：Electron 宿主。现有主窗口只信任 self-wiki 页面，并挂载专用 preload；不可把同样 preload 直接给 AionUi。
+- `src/main/main.js:42`：Electron 宿主。现有主窗口只信任 Jiva 页面，并挂载专用 preload；不可把同样 preload 直接给 AionUi。
 - `src/renderer/src/App.jsx:29`、`:240`：当前自研工作台独立 lazy 加载，可增加替代入口而不更改 Wiki 主体。
 - `src/server/server.js:90`：工作流的受限 Agent 节点依赖当前 `agentWorkbench.executeWorkflowAgent`，工作台 UI 被替换后仍须保留这一内部执行入口。
 - `src/server/server.js:94`：任务服务的 enabled 条件与旧工作台开关耦合；不能关闭旧开关后假定所有业务任务仍可用。
@@ -55,16 +55,16 @@
 ## 推荐边界
 
 ```text
-self-wiki Electron 窗口
+Jiva Electron 窗口
   ├─ 薄导航：工作台 / Wiki / 工作流 / 历史工作台
   ├─ 工作台区域：完整 AionUi WebUI（独立 WebContentsView / 独立 session）
   │    └─ AionUi WebHost → AionCore → 上游 Agent 接入
-  └─ Wiki 与原工作流 UI → self-wiki 后端与原资料库
+  └─ Wiki 与原工作流 UI → Jiva 后端与原资料库
 
-第二阶段：AionUi 的工具扩展 → 受限 self-wiki 桥接 → 原业务服务
+第二阶段：AionUi 的工具扩展 → 受限 Jiva 桥接 → 原业务服务
 ```
 
-桌面优先使用 WebContentsView，沿用上游页面自身布局，不在其外面再套一套项目/会话侧栏。self-wiki 只保留紧凑的跨模块导航。页面切换时隐藏视图而非销毁，返回时继续原会话；resize、缩放、焦点和弹窗遮挡需实际处理。
+桌面优先使用 WebContentsView，沿用上游页面自身布局，不在其外面再套一套项目/会话侧栏。Jiva 只保留紧凑的跨模块导航。页面切换时隐藏视图而非销毁，返回时继续原会话；resize、缩放、焦点和弹窗遮挡需实际处理。
 
 WebContentsView 使用单独 partition，不注入 Wiki preload，不启用 Node integration。不同端口不能隔离同主机 Cookie，因此不能仅靠 `127.0.0.1` 的端口差别隔离登录；桌面 session 必须独立。外链与 OAuth 只开放明确需要的外部浏览器流程。
 
@@ -75,7 +75,7 @@ WebContentsView 使用单独 partition，不注入 Wiki preload，不启用 Node
 - Wiki SQLite、媒体、工作流保持现有服务所有权；AionUi 会话和配置使用独立数据目录。
 - AionUi 管理新会话的流式输出、工具审批、文件执行和恢复。禁止两套后端同时驱动同一个新会话。
 - 历史会话保留原工作台入口，可继续使用原引擎；首版不迁移原生线程、不伪造恢复。
-- AionUi 的文件/命令审批不等于 self-wiki 业务批准。Wiki 建议采纳、生图和工作流批准继续由 self-wiki 执行。
+- AionUi 的文件/命令审批不等于 Jiva 业务批准。Wiki 建议采纳、生图和工作流批准继续由 Jiva 执行。
 - 桥接初期只开放检索与读取。后续提交任务需要服务端生成映射：AionUi conversation/turn → 本地业务 owner/turn；身份由连接绑定，不能由模型随意指定。
 - 未实现可靠轮次映射、建议卡与独立审批 UI 前，不开放现有 `forTurn` 的写入/付费工具。只添加 MCP 配置无法自动完成这些契约。
 - 桥接凭据只授予声明工具和对应会话范围，不给 AionUi renderer Wiki 管理 Bearer。原生 Agent 仍运行在当前用户权限下，不能把这种集成宣称为操作系统沙箱。
@@ -102,7 +102,7 @@ WebContentsView 使用单独 partition，不注入 Wiki preload，不启用 Node
 4. 验证窗口 resize/缩放、主题、中文输入、附件拖放、文件选择、登录外跳、预览与工作台/Wiki 往返。
 5. 核对首页与用户提供的上游截图，并验证真实执行过程、权限交互和右侧预览。
 
-退出标准：用户在 self-wiki 同一个桌面窗口中使用真正的 AionUi 完成任务；重启能恢复其会话，Wiki 和原工作流仍可用。
+退出标准：用户在 Jiva 同一个桌面窗口中使用真正的 AionUi 完成任务；重启能恢复其会话，Wiki 和原工作流仍可用。
 
 ### P2：连接 Wiki 与创作能力
 

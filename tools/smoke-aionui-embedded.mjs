@@ -48,7 +48,7 @@ try {
   const info = JSON.parse(await readFile(path.join(dataDir, 'aionui-experiment/experiment-instance.json'), 'utf8'));
   const api = async route => (await (await fetch(new URL(route, info.url))).json()).data;
   const results = [];
-  for (const engine of ['Grok Build', 'Google 官方 ACP · self-wiki']) {
+  for (const engine of ['Grok Build', 'Google 官方 ACP · Jiva']) {
     await page.getByText('新会话', { exact: true }).click();
     await page.getByRole('button', { name: 'Grok Build', exact: true }).waitFor();
     const choice = page.getByRole('button', { name: engine, exact: true });

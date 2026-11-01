@@ -1,6 +1,6 @@
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 
-export const localCookieName = 'self_wiki_local';
+export const localCookieName = 'jiva_local';
 const secret = () => randomBytes(32).toString('base64url');
 const hash = value => createHash('sha256').update(value).digest();
 function matches(candidate, expected) {

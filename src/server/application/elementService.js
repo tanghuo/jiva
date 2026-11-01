@@ -131,7 +131,7 @@ export function createElementService(repo, imageStore, videoStore) {
         }
         catch (error) { await imageStore.remove(file.storageKey).catch(() => {}); throw error; }
         // The import is committed: a failed cleanup of the duplicate copy must not report failure.
-        if (!result.keepFile) await imageStore.remove(file.storageKey).catch((error) => console.error("[self-wiki] duplicate image cleanup failed:", error.message));
+        if (!result.keepFile) await imageStore.remove(file.storageKey).catch((error) => console.error("[jiva] duplicate image cleanup failed:", error.message));
         else for (const width of [400, 800]) await imageStore.thumbnail(file.storageKey, width).catch(() => {});
         return result.element;
       } finally { importing--; }
@@ -161,7 +161,7 @@ export function createElementService(repo, imageStore, videoStore) {
           result = repo.importVideo({ tags, material, creationSource: "manual" }, file, missingStorageKey);
         } catch (error) { await videoStore.remove(file.storageKey).catch(() => {}); throw error; }
         // Committed: a failed cleanup of the duplicate upload must not turn success into an error.
-        if (!result.keepFile) await videoStore.remove(file.storageKey).catch((error) => console.error("[self-wiki] duplicate video cleanup failed:", error.message));
+        if (!result.keepFile) await videoStore.remove(file.storageKey).catch((error) => console.error("[jiva] duplicate video cleanup failed:", error.message));
         return result.element;
       } finally { importingVideos--; }
     },

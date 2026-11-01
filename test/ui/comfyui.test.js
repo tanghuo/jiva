@@ -712,7 +712,7 @@ test("ComfyUI keeps workflow prompts for blank input and uploads only to the rea
   assert.equal(f.state.submissions.length, 1); assert.equal(f.state.uploads.length, 1);
   const upload = f.state.uploads[0], sent = f.state.submissions[0].prompt;
   assert.deepEqual(upload.bytes, f.png); assert.equal(upload.type, "input"); assert.equal(upload.overwrite, null);
-  assert.equal(sent["72"].inputs.image, `self-wiki/${upload.name}`);
+  assert.equal(sent["72"].inputs.image, `jiva/${upload.name}`);
   assert.equal(sent["6"].inputs.text, "original positive"); assert.equal(sent["7"].inputs.text, "original negative");
   assert.equal(sent["100"], undefined); assert.deepEqual(f.config, original);
   assert.equal(events.find((event) => event.type === "prepared_prompt").prompt, "original positive");
@@ -739,8 +739,8 @@ test('explicit multi-image mappings route each image to its chosen node and pres
   await generateComfyui({ prompt: '指定的新提示词', referencePaths: ['first.png', 'second.png'] }, { config: f.config, workspace: f.root, onProgress: (event) => events.push(event) });
   const sent = f.state.submissions[0].prompt;
   assert.deepEqual(f.state.uploads.map((entry) => entry.bytes), [f.png, second]);
-  assert.equal(sent['73'].inputs.image, `self-wiki/${f.state.uploads[0].name}`);
-  assert.equal(sent['72'].inputs.image, `self-wiki/${f.state.uploads[1].name}`);
+  assert.equal(sent['73'].inputs.image, `jiva/${f.state.uploads[0].name}`);
+  assert.equal(sent['72'].inputs.image, `jiva/${f.state.uploads[1].name}`);
   assert.equal(sent['74'].inputs.image, 'keep-original.png');
   assert.equal(sent['6'].inputs.text, '指定的新提示词'); assert.equal(sent['7'].inputs.text, 'original negative');
   assert.equal(sent['3'].inputs.seed, original.workflow['3'].inputs.seed);

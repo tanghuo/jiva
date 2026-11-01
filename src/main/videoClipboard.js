@@ -53,9 +53,9 @@ export async function copyVideoFile(file) {
   const script = `$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 $files = New-Object System.Collections.Specialized.StringCollection
-[void]$files.Add($env:SELF_WIKI_CLIPBOARD_FILE)
+[void]$files.Add($env:JIVA_CLIPBOARD_FILE)
 [System.Windows.Forms.Clipboard]::SetFileDropList($files)`;
   await promisify(execFile)(path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
     ["-NoProfile", "-NonInteractive", "-STA", "-Command", script],
-    { windowsHide: true, timeout: 15000, env: { ...process.env, SELF_WIKI_CLIPBOARD_FILE: file } });
+    { windowsHide: true, timeout: 15000, env: { ...process.env, JIVA_CLIPBOARD_FILE: file } });
 }

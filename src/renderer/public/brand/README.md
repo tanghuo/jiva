@@ -1,18 +1,18 @@
-# self-wiki logo（D2）
+# Jiva logo（D2）
 
 两张圆角卡片由一笔线条连在一起（整体也像字母 S），表达“素材 + 素材之间的关系”。
 颜色：底 #1F124A（深墨紫），图形 #FFFAF8（米白），不用渐变和发光；圆角 = 边长的 22.5%。
 所有主题共用同一品牌配色。图标外为透明底。
 
-- `self-wiki.svg`：主图矢量版（48 像素及以上用）。
-- `self-wiki-small.svg`：小尺寸矢量版（图形放大、线条加粗）；侧栏 28 CSS 像素标记和浏览器标签页图标用它。
-- `self-wiki.png`：主图位图（1024×1024）。
-- `self-wiki-small.png`：小尺寸版位图（1024×1024），用于生成 16–32 像素图标。
-- `self-wiki-64.png`：64 像素位图（备用）。
-- `self-wiki-32.png`：浏览器标签页图标（不支持 SVG 图标时的后备）。
-- `self-wiki-180.png`：Apple touch icon。
-- `self-wiki.ico`：Windows 窗口、任务栏及打包图标，包含 16/24/32/48/64/128/256 七个尺寸；16–32 来自小尺寸版。
+- `jiva.svg`：主图矢量版（48 像素及以上用）。
+- `jiva-small.svg`：小尺寸矢量版（图形放大、线条加粗）；侧栏 28 CSS 像素标记和浏览器标签页图标用它。
+- `jiva.png`：主图位图（1024×1024）。
+- `jiva-small.png`：小尺寸版位图（1024×1024），用于生成 16–32 像素图标。
+- `jiva-64.png`：64 像素位图（备用）。
+- `jiva-32.png`：浏览器标签页图标（不支持 SVG 图标时的后备）。
+- `jiva-180.png`：Apple touch icon。
+- `jiva.ico`：Windows 窗口、任务栏及打包图标，包含 16/24/32/48/64/128/256 七个尺寸；16–32 来自小尺寸版。
 
 以上文件由设计稿直接导出，优先使用设计稿文件。若只改了原图、需要重新生成，
-在仓库根目录运行 `node tools/generate-icons.mjs`（16–32 用 `self-wiki-small.png`，其余用 `self-wiki.png`），
+在仓库根目录运行 `node tools/generate-icons.mjs`（16–32 用 `jiva-small.png`，其余用 `jiva.png`），
 再运行 `npm run build`。Windows 可执行文件图标需重新打包后生效。

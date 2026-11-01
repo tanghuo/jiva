@@ -1,4 +1,4 @@
-# self-wiki 界面规则（设计系统）
+# Jiva 界面规则（设计系统）
 
 这份文档写给以后改界面的人：照着做，新页面就会和现有页面长得一样。规则由 `npm run check:arch` 和 `test/unit/ui-components.test.js` 自动检查。
 

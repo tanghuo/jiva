@@ -8,7 +8,7 @@
     "nativeApprovals": true,
     "noExternalMcp": true
   },
-  "version": "self_wiki/0.159.0 (Windows 10.0.22631; x86_64) unknown (self_wiki; 0.2.0)",
+  "version": "jiva/0.159.0 (Windows 10.0.22631; x86_64) unknown (jiva; 0.2.0)",
   "policy": {
     "activePermissionProfile": {
       "id": "wiki_1d1af006e7114bf18ab03842cb31cff2",

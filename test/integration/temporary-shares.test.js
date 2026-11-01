@@ -102,7 +102,7 @@ test("paired LAN guests still need the dedicated share link even with editing en
   const status = await (await request("/api/lan-sharing", "POST", { enabled: true })).json();
   const lan = `http://127.0.0.1:${port}`;
   assert.equal((await fetch(lan + item.downloadUrl)).status, 401);
-  const headers = { "x-self-wiki-lan-token": status.token, "content-type": "application/json" };
+  const headers = { "x-jiva-lan-token": status.token, "content-type": "application/json" };
   assert.equal((await fetch(lan + item.downloadUrl, { headers })).status, 403);
   assert.equal(await (await fetch(lan + `/share/${item.id}/download?token=${item.shareToken}`, { headers })).text(), "LAN bytes");
   assert.equal((await fetch(lan + "/api/temporary-shares", { method: "POST", headers, body: JSON.stringify({ sourcePath }) })).status, 403);
@@ -181,13 +181,13 @@ test("share links grant only one live download without pairing or exposing other
   }
   assert.equal((await fetch(lan + `/share/${other.id}/download` + query)).status, 404);
   assert.equal((await fetch(downloadUrl, { method: "POST" })).status, 405);
-  const shareHeaders = { "x-self-wiki-lan-token": item.shareToken, "content-type": "application/json" };
+  const shareHeaders = { "x-jiva-lan-token": item.shareToken, "content-type": "application/json" };
   for (const endpoint of ["/api/elements", "/api/temporary-shares", item.downloadUrl]) {
     assert.equal((await fetch(lan + endpoint + query, { headers: shareHeaders })).status, 401);
   }
   assert.equal((await fetch(lan + "/api/elements", { method: "POST", headers: shareHeaders, body: "{}" })).status, 401);
   assert.equal((await fetch(lan + `/?pair=${item.shareToken}`, { redirect: "manual" })).status, 401);
-  assert.equal((await fetch(lan + "/api/temporary-shares", { headers: { "x-self-wiki-lan-token": status.token } })).status, 403);
+  assert.equal((await fetch(lan + "/api/temporary-shares", { headers: { "x-jiva-lan-token": status.token } })).status, 403);
   await request(`/api/temporary-shares/${item.id}`, "DELETE");
   assert.equal((await fetch(lan + route + query)).status, 404);
   assert.equal((await fetch(downloadUrl)).status, 404);

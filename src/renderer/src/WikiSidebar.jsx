@@ -23,7 +23,7 @@ export default function WikiSidebar({ activeTab, onChooseTab, busy, readOnly = f
   const guard = (event) => { if (busy) event.preventDefault(); };
   const sectionButton = ({ key, label, icon: Icon }) => <button key={key} className={`nav-item ${activeTab === key ? "active" : ""}`} onClick={() => onChooseTab(key)} disabled={busy} aria-current={activeTab === key ? "page" : undefined}><Icon size={18} /><span>{label}</span></button>;
   return <aside className="wiki-sidebar" aria-label="内容导航" data-utilities-open={utilitiesOpen}>
-    <a className="workspace-brand" href="#wiki" title="返回内容库"><img className="workspace-brand-mark" src="./brand/self-wiki-small.svg" width="28" height="28" alt="" /><strong>self-wiki</strong></a>
+    <a className="workspace-brand" href="#wiki" title="返回内容库"><img className="workspace-brand-mark" src="./brand/jiva-small.svg" width="28" height="28" alt="" /><strong>Jiva</strong></a>
     {!readOnly && <button className="wiki-utilities-toggle icon-only" aria-label="更多工具" aria-expanded={utilitiesOpen} onClick={() => setUtilitiesOpen((current) => !current)}><MoreHorizontal size={18} /></button>}
     <nav className="wiki-sidebar-nav" ref={nav} aria-label="页面">
       {!readOnly && local && <a className={`nav-item wiki-agent-entry ${activeTab === "workbench" ? "active" : ""}`} href="#workbench" aria-label="Agent 工作台" aria-current={activeTab === "workbench" ? "page" : undefined} aria-disabled={busy} onClick={guard}><Bot size={18} /><span>Agent 工作台</span></a>}

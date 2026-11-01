@@ -223,7 +223,7 @@ test("organization history previews images, retains unavailable sources and page
   for (let index = 0; index < 12; index++) {
     let source;
     if (index === 11) {
-      const response = await fetch(new URL("api/images", app.url), { method: "POST", headers: { "x-file-name": "history-preview.png" }, body: await readFile(new URL("../../src/renderer/public/brand/self-wiki-64.png", import.meta.url)) });
+      const response = await fetch(new URL("api/images", app.url), { method: "POST", headers: { "x-file-name": "history-preview.png" }, body: await readFile(new URL("../../src/renderer/public/brand/jiva-64.png", import.meta.url)) });
       assert.equal(response.status, 201); source = await response.json();
     } else source = await api("elements", { body: `历史内容 ${index + 1}` });
     if (index === 10) unavailable = source.id;

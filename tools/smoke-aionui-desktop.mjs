@@ -18,9 +18,9 @@ application.process().stderr.on('data', chunk => process.stderr.write(chunk));
 try {
   const page = await application.firstWindow({ timeout: 120000 });
   const pageErrors = []; page.on('pageerror', error => pageErrors.push(error.message));
-  await page.getByText('Google 官方 ACP · self-wiki', { exact: true }).waitFor({ timeout: 120000 });
+  await page.getByText('Google 官方 ACP · Jiva', { exact: true }).waitFor({ timeout: 120000 });
   assert.equal(await page.evaluate(() => Boolean(window.wikiDesktop)), false);
-  await page.getByText('Google 官方 ACP · self-wiki', { exact: true }).click();
+  await page.getByText('Google 官方 ACP · Jiva', { exact: true }).click();
   await page.locator('textarea').first().fill(`只回复 ${expected}，不调用任何工具。`);
   await page.locator('textarea').first().press('Enter');
   const info = JSON.parse(await readFile(path.join(dataDir, 'aionui-experiment/experiment-instance.json'), 'utf8'));

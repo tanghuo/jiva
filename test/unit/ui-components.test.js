@@ -15,7 +15,7 @@ async function loadUi() {
   // Bundle next to node_modules so the bare react / lucide-react imports resolve.
   const cache = path.join(root, "node_modules", ".cache");
   await mkdir(cache, { recursive: true });
-  const dir = await mkdtemp(path.join(cache, "self-wiki-ui-"));
+  const dir = await mkdtemp(path.join(cache, "jiva-ui-"));
   const outfile = path.join(dir, "ui.mjs");
   await build({ entryPoints: [path.join(renderer, "ui/index.js")], bundle: true, format: "esm", platform: "node", jsx: "automatic", outfile, logLevel: "silent",
     external: ["react", "react-dom", "react/jsx-runtime", "lucide-react"], nodePaths: [path.join(root, "node_modules")] });

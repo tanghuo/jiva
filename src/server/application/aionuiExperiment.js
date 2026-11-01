@@ -25,7 +25,7 @@ export function createAionuiExperiment({ root, dataDir, timeoutMs = 120000, term
   const files = [path.join(runtime, 'host.mjs'), path.join(runtime, 'backend/aioncore.exe'), path.join(root, '.local/references/AionUi/out/renderer/index.html')];
   async function status() {
     const prepared = (await Promise.all(files.map(file => access(file).then(() => true, () => false)))).every(Boolean);
-    return { prepared, state: stopping ? 'stopping' : stopUnconfirmed ? 'failed' : ready ? 'running' : pending ? 'starting' : failure ? 'failed' : 'stopped', url: ready?.url || '', agentName: ready?.agentName || 'Google 官方 ACP · self-wiki', dataDir: directory, error: stopUnconfirmed ? stopError().message : failure, version: 'AionUi 2.2.2 / AionCore 0.2.2' };
+    return { prepared, state: stopping ? 'stopping' : stopUnconfirmed ? 'failed' : ready ? 'running' : pending ? 'starting' : failure ? 'failed' : 'stopped', url: ready?.url || '', agentName: ready?.agentName || 'Google 官方 ACP · Jiva', dataDir: directory, error: stopUnconfirmed ? stopError().message : failure, version: 'AionUi 2.2.2 / AionCore 0.2.2' };
   }
   function start() {
     if (closed) return Promise.reject(new Error('实验服务正在关闭'));
@@ -45,7 +45,7 @@ export function createAionuiExperiment({ root, dataDir, timeoutMs = 120000, term
       const nodeBinary = process.versions.electron ? process.env.NODE_BINARY || 'node' : process.execPath;
       const current = spawn(nodeBinary, [files[0], directory, '--managed'], {
         cwd: root, windowsHide: true, shell: false, detached: process.platform !== 'win32',
-        env: { ...process.env, SELF_WIKI_ROOT: root, AIONUI_LOG_LEVEL: 'warn', TEMP: temporary, TMP: temporary, TMPDIR: temporary }, stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, JIVA_ROOT: root, AIONUI_LOG_LEVEL: 'warn', TEMP: temporary, TMP: temporary, TMPDIR: temporary }, stdio: ['pipe', 'pipe', 'pipe'],
       });
       child = current;
       temporaryDirectories.set(current, temporary);
@@ -75,9 +75,9 @@ export function createAionuiExperiment({ root, dataDir, timeoutMs = 120000, term
             let end;
             while ((end = buffer.indexOf('\n')) >= 0) {
               const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
-              if (!line.startsWith('SELF_WIKI_AIONUI_READY ')) continue;
+              if (!line.startsWith('JIVA_AIONUI_READY ')) continue;
               try {
-                const info = JSON.parse(line.slice('SELF_WIKI_AIONUI_READY '.length));
+                const info = JSON.parse(line.slice('JIVA_AIONUI_READY '.length));
                 const url = new URL(info.url);
                 if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.username || url.password || !Number.isInteger(info.backendPort) || info.backendPort < 1 || info.backendPort > 65535) throw new Error();
                 finish(null, info);

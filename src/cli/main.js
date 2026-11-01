@@ -44,12 +44,12 @@ function parseCommand(command, args) {
 }
 
 function help(selected = commands) {
-  return ["self-wiki <command> [arguments] [options]", "Commands must come before options. JSON output is the default; no server is needed for help/schema.", "",
+  return ["jiva <command> [arguments] [options]", "Commands must come before options. JSON output is the default; no server is needed for help/schema.", "",
     ...selected.flatMap((command) => [
       `${command.name} ${(command.args || []).map((arg) => `<${arg}>`).join(" ")}  ${command.description}`,
       ...Object.entries(command.options || {}).map(([name, spec]) => `  --${name}${spec.type === "string" ? " <value>" : ""}  ${spec.description}`),
     ]), "", "Global options:", ...Object.entries(globalOptions).map(([name, spec]) => `  --${name}  ${spec.description}`),
-    "", "self-wiki schema [command]  Machine-readable command catalogue and semantics", "See docs/cli.md for payload formats and agent workflows.", ""].join("\n");
+    "", "jiva schema [command]  Machine-readable command catalogue and semantics", "See docs/cli.md for payload formats and agent workflows.", ""].join("\n");
 }
 
 async function readText(file) {

@@ -12,14 +12,14 @@ if (!process.argv.includes('--live')) throw new Error('--live required');
 const output = process.argv[process.argv.indexOf('--output') + 1]; if (!output || output.startsWith('--')) throw new Error('--output required');
 const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-wiki-')), dataDir = path.join(root, 'data'); await mkdir(dataDir);
 const db = initDb(path.join(dataDir, 'library.sqlite3')), repo = createAgentWorkbenchRepository(db), wiki = createElementRepository(db), wikiRepo = createAgentWikiRepository(db);
-const source = wiki.createText({ body: 'SELF_WIKI_SDK_FIXTURE: synthetic content for a safe tool integration test.', tags: [], creationSource: 'manual' });
+const source = wiki.createText({ body: 'JIVA_SDK_FIXTURE: synthetic content for a safe tool integration test.', tags: [], creationSource: 'manual' });
 const tasks = { list: () => [], artifacts: () => [], operations: () => [], schedule() {}, hasActive: () => false, expireTurn() {}, submit() { throw new Error('Synthetic Wiki probe never permits image tasks'); } };
 const tools = createAgentTools({ wiki, repo: wikiRepo, tasks });
 const service = await createAgentWorkbenchService({ repo, dataDir, tools, tasks, applicationToolsVerified: true, initiallyEnabled: true, executionConfig: () => ({ chat: { grokBuild: { model: 'grok-4.6', effort: 'low' } } }) });
 const report = { modelCalls: 1, paidImageCalls: 0, checks: {} };
 try {
   const workspace = await service.workspace({ kind: 'scratch', trusted: true }), session = service.createSession({ workspaceId: workspace.id, engine: 'grok-build', effort: 'low' });
-  const turn = service.submit(session.id, { requestKey: 'real-wiki-smoke', text: 'Synthetic integration test: discover wiki_search, wiki_read and wiki_propose. Search for SELF_WIKI_SDK_FIXTURE; read that entry; propose adding exactly the tag sdk-verified using kind add_tags, reason synthetic compatibility evidence, sourceIds [], requestKey sdk-proposal-01. Do not apply the suggestion. Do not use files, terminal, images, web, other agents or other tools. If rejected, stop without alternatives.' });
+  const turn = service.submit(session.id, { requestKey: 'real-wiki-smoke', text: 'Synthetic integration test: discover wiki_search, wiki_read and wiki_propose. Search for JIVA_SDK_FIXTURE; read that entry; propose adding exactly the tag sdk-verified using kind add_tags, reason synthetic compatibility evidence, sourceIds [], requestKey sdk-proposal-01. Do not apply the suggestion. Do not use files, terminal, images, web, other agents or other tools. If rejected, stop without alternatives.' });
   const end = Date.now() + 120000;
   while (Date.now() < end) {
     const t = repo.turn(turn.id);

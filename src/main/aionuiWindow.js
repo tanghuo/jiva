@@ -18,8 +18,8 @@ export function createAionuiWindow({ BrowserWindow, shell, backend, parent }) {
       }
       const current = new BrowserWindow({
         width: 1440, height: 960, minWidth: 960, minHeight: 680,
-        title: 'AionUi 实验版 · self-wiki', show: false, parent,
-        webPreferences: { partition: 'self-wiki-aionui-experiment', contextIsolation: true, nodeIntegration: false, sandbox: true },
+        title: 'AionUi 实验版 · Jiva', show: false, parent,
+        webPreferences: { partition: 'jiva-aionui-experiment', contextIsolation: true, nodeIntegration: false, sandbox: true },
       });
       window = current;
       current.setMenu(null);

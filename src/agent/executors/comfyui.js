@@ -183,11 +183,11 @@ async function uploadReference(config, entry, workspace, signal) {
     format = info.format;
   } catch { throw new Error("参考图必须是单张 PNG、JPEG 或 WebP 图片，且不超过 4000 万像素"); }
   signal.throwIfAborted();
-  const body = new FormData(), name = `self-wiki-${randomUUID()}.${format}`;
+  const body = new FormData(), name = `jiva-${randomUUID()}.${format}`;
   body.set("image", new Blob([bytes], { type: `image/${format}` }), name);
-  body.set("type", "input"); body.set("subfolder", "self-wiki");
+  body.set("type", "input"); body.set("subfolder", "jiva");
   const uploaded = await json(config, "/upload/image", { method: "POST", body, signal });
-  if (uploaded.type !== "input" || uploaded.subfolder !== "self-wiki" || uploaded.name !== name) {
+  if (uploaded.type !== "input" || uploaded.subfolder !== "jiva" || uploaded.name !== name) {
     throw new Error("ComfyUI 返回的参考图路径与本次上传不符；未提交生成任务");
   }
   return { filename: `${uploaded.subfolder}/${uploaded.name}`, sha256: createHash("sha256").update(bytes).digest("hex") };

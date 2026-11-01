@@ -76,7 +76,7 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
       if (temporaryShares && await handleSharedDownloadRoute(temporaryShares, req, res, url)) return;
       if (access === "lan" && await lanGate(req, res, host)) return;
       if (access === 'local') {
-        if (url.pathname === '/api/health' && req.method === 'GET') { json(res, 200, { ok: true, application: 'self-wiki' }); return; }
+        if (url.pathname === '/api/health' && req.method === 'GET') { json(res, 200, { ok: true, application: 'jiva' }); return; }
         if (authentication && await handleLocalAuthRoute(authentication, req, res, url)) return;
         if (url.pathname.startsWith('/api/') || url.pathname === '/image') {
           res.setHeader('cache-control', 'no-store');
@@ -87,7 +87,7 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
           }
         }
       }
-      if (req.headers["x-self-wiki-instance"] && req.headers["x-self-wiki-instance"] !== instance?.instanceId) {
+      if (req.headers["x-jiva-instance"] && req.headers["x-jiva-instance"] !== instance?.instanceId) {
         throw httpError(409, "Server instance changed; reconnect before retrying");
       }
       if (quota && await handleQuotaRoute(quota, req, res, url, access)) return;

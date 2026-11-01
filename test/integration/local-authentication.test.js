@@ -28,7 +28,7 @@ test('private local APIs require credentials; static pages and health never mint
     assert.equal(response.headers.get('set-cookie'), null);
   }
   const health = await f.request('/api/health');
-  assert.deepEqual(await health.json(), { ok: true, application: 'self-wiki' });
+  assert.deepEqual(await health.json(), { ok: true, application: 'jiva' });
   assert.equal(health.headers.get('set-cookie'), null);
   assert.equal((await f.request('/')).headers.get('set-cookie'), null);
   assert.equal((await f.request('/api/instance', { headers: f.app.managementHeaders() })).status, 200);
@@ -47,7 +47,7 @@ test('bootstrap is single-use, no-store, HttpOnly and independent of CLI/tool be
   assert.equal((await redeem(code)).status, 401);
   assert.equal((await f.request('/api/instance', { headers: { cookie } })).status, 200);
   assert.equal((await f.request('/api/instance', { headers: { authorization: `Bearer ${code}` } })).status, 401);
-  assert.equal((await f.request('/api/instance', { headers: { authorization: 'Bearer application-tool-token', 'x-self-wiki-chat-token': 'invalid', 'x-self-wiki-chat-call': 'invalid' } })).status, 401);
+  assert.equal((await f.request('/api/instance', { headers: { authorization: 'Bearer application-tool-token', 'x-jiva-chat-token': 'invalid', 'x-jiva-chat-call': 'invalid' } })).status, 401);
   assert.equal((await f.request('/api/auth/code')).status, 401);
   assert.equal((await f.request('/api/instance', { headers: { ...f.app.managementHeaders(), origin: 'https://example.com' } })).status, 403);
 });
@@ -97,6 +97,6 @@ test('CLI discovery authenticates, explicit URLs need a token source and pairing
 });
 
 test('engine environments omit application, unrelated provider and proxy credentials', () => {
-  assert.deepEqual(childEnvironment({ Path: 'system-path', USERPROFILE: 'user', GROK_HOME: 'grok-home', CODEX_HOME: 'codex-home', SELF_WIKI_CHAT_TOKEN: 'secret', SELF_WIKI_TOKEN_FILE: 'secret-path', XAI_API_KEY: 'secret', OPENAI_API_KEY: 'secret', HTTPS_PROXY: 'secret' }),
+  assert.deepEqual(childEnvironment({ Path: 'system-path', USERPROFILE: 'user', GROK_HOME: 'grok-home', CODEX_HOME: 'codex-home', JIVA_CHAT_TOKEN: 'secret', JIVA_TOKEN_FILE: 'secret-path', XAI_API_KEY: 'secret', OPENAI_API_KEY: 'secret', HTTPS_PROXY: 'secret' }),
     { Path: 'system-path', USERPROFILE: 'user', GROK_HOME: 'grok-home', CODEX_HOME: 'codex-home' });
 });

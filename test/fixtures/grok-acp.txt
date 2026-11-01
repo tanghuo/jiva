@@ -15,7 +15,7 @@ const folder = () => path.join(process.env.GROK_HOME,'sessions',encodeURICompone
 const save = async () => {await mkdir(folder(),{recursive:true});await writeFile(path.join(folder(),'state.json'),JSON.stringify(state));await writeFile(path.join(folder(),'summary.json'),JSON.stringify({agent_profile:profile}));};
 async function gate(toolName,toolInput={}) {
   if (!hooks?.pre_tool_use?.[0]?.hookCallbackIds?.length) throw new Error('client hooks missing');
-  return request('_x.ai/hooks/run',{sessionId:thread,hookCallbackId:'self-wiki-tools',hookEventName:'pre_tool_use',toolName,toolInput});
+  return request('_x.ai/hooks/run',{sessionId:thread,hookCallbackId:'jiva-tools',hookEventName:'pre_tool_use',toolName,toolInput});
 }
 async function handle(value) {
   if(!value.method){const resolve=pending.get(value.id);if(resolve){pending.delete(value.id);resolve(value.result);}return;}
@@ -57,8 +57,8 @@ async function handle(value) {
   if(text.startsWith('RECALL'))answer=state.word||'missing';
   if(text.startsWith('DENY_SHELL')){const decision=await gate('run_terminal_command',{command:'echo forbidden'});answer=decision.decision==='deny'?'SHELL_BLOCKED':'SHELL_ALLOWED';}
   if(text.startsWith('WIKI')){
-    const decision=await gate('self_wiki__wiki_cli');if(decision.decision==='deny')throw new Error(decision.reason);
-    const id='mcp-1';update({sessionUpdate:'tool_call',toolCallId:id,status:'pending',_meta:{'x.ai/tool':{name:'self_wiki__wiki_cli'}},rawInput:{}});
+    const decision=await gate('jiva__wiki_cli');if(decision.decision==='deny')throw new Error(decision.reason);
+    const id='mcp-1';update({sessionUpdate:'tool_call',toolCallId:id,status:'pending',_meta:{'x.ai/tool':{name:'jiva__wiki_cli'}},rawInput:{}});
     const response=await fetch(mcp.url,{method:'POST',headers:{'content-type':'application/json',...Object.fromEntries(mcp.headers.map(h=>[h.name,h.value]))},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'wiki_cli',arguments:{args:['schema'],stdin:''}}})});
     const result=await response.json();if(result.error)throw new Error(result.error.message);answer='WIKI_OK';
     update({sessionUpdate:'tool_call_update',toolCallId:id,status:'completed',rawOutput:{content:result.result.content}});

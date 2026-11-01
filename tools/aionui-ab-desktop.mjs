@@ -7,12 +7,12 @@ import { createAionuiExperiment } from '../src/server/application/aionuiExperime
 import { createAionuiWindow } from '../src/main/aionuiWindow.js';
 
 const root = path.resolve(import.meta.dirname, '..');
-app.setName('self-wiki-aionui-ab');
+app.setName('jiva-aionui-ab');
 const profile = process.env.APP_DATA_DIR ? path.join(process.env.APP_DATA_DIR, 'aionui-desktop-profile') : path.join(root, '.local/aionui-experiment/desktop-profile');
 mkdirSync(profile, { recursive: true });
 app.setPath('userData', profile);
 const experiment = createAionuiExperiment({ root, dataDir: process.env.APP_DATA_DIR || path.join(root, 'data') });
-const cookie = `self-wiki-aionui-launch=${randomUUID()}`;
+const cookie = `jiva-aionui-launch=${randomUUID()}`;
 const server = createServer(async (req, res) => {
   if (req.method !== 'POST' || req.url !== '/api/aionui/start' || req.headers.cookie !== cookie || req.headers.origin) { res.writeHead(403); res.end(); return; }
   try {

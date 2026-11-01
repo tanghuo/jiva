@@ -86,7 +86,7 @@ export const codexCli = {
     const sharedLogin = await localCodexAuth(config);
     // A stable cwd keeps per-request random paths out of Codex's environment context.
     // Files remain isolated and are removed independently after each execution.
-    const workspace = path.join(os.tmpdir(), "self-wiki-organization");
+    const workspace = path.join(os.tmpdir(), "jiva-organization");
     await mkdir(workspace, { recursive: true });
     const root = await mkdtemp(path.join(workspace, "request-"));
     const startedAt = Date.now(), id = randomUUID();

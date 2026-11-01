@@ -46,7 +46,7 @@ function runPython(config, request, { workspace, signal, onProgress }) {
   signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const child = spawn(config.python, ["-u", script], { cwd: workspace, shell: false, windowsHide: true,
-      env: { ...childEnvironment(), PYTHONUTF8: "1", PYTHONDONTWRITEBYTECODE: "1", SELF_WIKI_NODE: process.execPath }, stdio: ["pipe", "pipe", "pipe"] });
+      env: { ...childEnvironment(), PYTHONUTF8: "1", PYTHONDONTWRITEBYTECODE: "1", JIVA_NODE: process.execPath }, stdio: ["pipe", "pipe", "pipe"] });
     const decoder = new StringDecoder("utf8");
     let buffer = "", stderr = "", result, error, killTimer;
     function kill() {
@@ -141,7 +141,7 @@ async function generateImage(value, { config, workspace, signal, onProgress, ver
   signal?.throwIfAborted();
   const directory = await mkdtemp(path.join(root, "web-image-")), output = path.join(directory, "output.png");
   // Serialized calls reuse one daemon for this application's data directory.
-  const session = `self-wiki-${createHash("sha256").update(path.dirname(root)).digest("hex").slice(0, 20)}`;
+  const session = `jiva-${createHash("sha256").update(path.dirname(root)).digest("hex").slice(0, 20)}`;
   const result = await runPython(config, { prompt: value.prompt, size: value.size, referencePaths: references, verbatim, conversationUrl, output, session }, { workspace: root, signal, onProgress });
   signal?.throwIfAborted();
   if (result.path !== output || (await stat(output)).size > 25 * 1024 * 1024) throw new Error("网页版执行器返回了无效的图片路径或大小");

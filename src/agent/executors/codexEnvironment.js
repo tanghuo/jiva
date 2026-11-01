@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { localCodexAuth } from "./codexLocalAuth.js";
 import { childEnvironment } from '../../shared/runtime/childEnvironment.js';
 
-const configHeader = "# Managed by self-wiki; edit the source Codex config.toml, then reconnect.\n";
+const configHeader = "# Managed by jiva; edit the source Codex config.toml, then reconnect.\n";
 
 async function syncConfig(source, home) {
   const target = path.join(home, "config.toml");

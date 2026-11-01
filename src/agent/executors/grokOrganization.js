@@ -77,7 +77,7 @@ export const grokOrganization = {
     const report = () => onUsage?.({ id, model, startedAt, elapsedMs: Date.now() - startedAt, state, usage: null,
       context: { promptChars: request.prompt.length, imageCount: imagesIn.length } });
     report();
-    const workspace = path.join(os.tmpdir(), "self-wiki-grok-organization");
+    const workspace = path.join(os.tmpdir(), "jiva-grok-organization");
     await mkdir(workspace, { recursive: true });
     const root = await mkdtemp(path.join(workspace, "request-"));
     try {

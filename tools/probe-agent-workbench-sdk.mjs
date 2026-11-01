@@ -13,7 +13,7 @@ if (!output || output.startsWith('--')) throw new Error('--output required');
 const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-sdk-probe-')), cwd = path.join(root, 'project'); await mkdir(cwd);
 await writeFile(path.join(cwd, 'AGENTS.md'), 'Synthetic file. No images, web, agents or alternate tools.\n');
 const report = { modelCalls: 0, paidImageCalls: 0, checks: {}, toolCalls: 0, hostRequests: [], trace: [] };
-const sdk = createGrokSdkTools([{ name: 'wiki_search', description: 'Search synthetic wiki entries only', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false } }], async call => { report.toolCalls++; return { marker: 'SELF_WIKI_SDK_OK', query: call.input.query }; });
+const sdk = createGrokSdkTools([{ name: 'wiki_search', description: 'Search synthetic wiki entries only', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false } }], async call => { report.toolCalls++; return { marker: 'JIVA_SDK_OK', query: call.input.query }; });
 const profile = grokWorkbenchProfile({ applicationTools: true }); let thread, phase = 'initialize';
 const client = await startGrokAcp({ model: 'grok-4.6' }, { cwd: root, onNotification(method, params) {
   const value = params.update;

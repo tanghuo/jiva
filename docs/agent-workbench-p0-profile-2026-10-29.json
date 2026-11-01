@@ -20,8 +20,8 @@
     "Glob"
   ],
   "profile": {
-    "name": "self-wiki-workbench-v1",
-    "description": "Self Wiki execution host; exact tools verified before prompting",
+    "name": "jiva-workbench-v1",
+    "description": "Jiva execution host; exact tools verified before prompting",
     "toolConfig": {
       "tools": [
         {
@@ -119,7 +119,7 @@
   },
   "profileVerification": {
     "verified": true,
-    "profile": "self-wiki-workbench-v1",
+    "profile": "jiva-workbench-v1",
     "toolIds": [
       "GrokBuild:read_file",
       "GrokBuild:run_terminal_cmd",

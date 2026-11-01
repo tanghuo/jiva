@@ -3,16 +3,16 @@ import path from "node:path";
 import sharp from "sharp";
 
 // Rebuild browser and Windows sizes from the original logo without changing it.
-// 16–32 px come from self-wiki-small.png (larger mark, thicker strokes) so they stay legible.
+// 16–32 px come from jiva-small.png (larger mark, thicker strokes) so they stay legible.
 const directory = path.resolve(import.meta.dirname, "../src/renderer/public/brand");
-const source = await readFile(path.join(directory, "self-wiki.png"));
-const smallSource = await readFile(path.join(directory, "self-wiki-small.png"));
+const source = await readFile(path.join(directory, "jiva.png"));
+const smallSource = await readFile(path.join(directory, "jiva-small.png"));
 const sizes = [16, 24, 32, 48, 64, 128, 180, 256];
 const images = new Map();
 for (const size of sizes) {
   const png = await sharp(size <= 32 ? smallSource : source).resize(size, size).png().toBuffer();
   images.set(size, png);
-  if ([32, 64, 180].includes(size)) await writeFile(path.join(directory, `self-wiki-${size}.png`), png);
+  if ([32, 64, 180].includes(size)) await writeFile(path.join(directory, `jiva-${size}.png`), png);
 }
 
 // Windows Vista and newer support PNG images in ICO directory entries.
@@ -32,5 +32,5 @@ for (const [index, size] of iconSizes.entries()) {
   header.writeUInt32LE(offset, entry + 12);
   offset += png.length;
 }
-await writeFile(path.join(directory, "self-wiki.ico"), Buffer.concat([header, ...iconSizes.map((size) => images.get(size))]));
-console.log("Generated browser icons and Windows ICO from self-wiki.png and self-wiki-small.png.");
+await writeFile(path.join(directory, "jiva.ico"), Buffer.concat([header, ...iconSizes.map((size) => images.get(size))]));
+console.log("Generated browser icons and Windows ICO from jiva.png and jiva-small.png.");

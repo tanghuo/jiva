@@ -53,10 +53,10 @@ public static class WikiWallpaper {
   public static extern bool SystemParametersInfoW(uint action, uint param, string value, uint flags);
 }
 '@
-if (-not [WikiWallpaper]::SystemParametersInfoW(20, 0, $env:SELF_WIKI_WALLPAPER_FILE, 3)) {
+if (-not [WikiWallpaper]::SystemParametersInfoW(20, 0, $env:JIVA_WALLPAPER_FILE, 3)) {
   throw [System.ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
 }`;
   await promisify(execFile)(path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
     ["-NoProfile", "-NonInteractive", "-Command", script],
-    { windowsHide: true, timeout: 15000, env: { ...process.env, SELF_WIKI_WALLPAPER_FILE: file } });
+    { windowsHide: true, timeout: 15000, env: { ...process.env, JIVA_WALLPAPER_FILE: file } });
 }

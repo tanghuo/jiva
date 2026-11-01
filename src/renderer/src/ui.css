@@ -1,4 +1,4 @@
-/* self-wiki design system: the shared components every page is built from.
+/* Jiva design system: the shared components every page is built from.
    Rules (docs/design-system.md): 4 button levels, 3 control heights (28 / 36 / 44),
    at most one primary per view and always rightmost, one page-header structure,
    tabs and segmented controls are not buttons, dialogs end with [取消] [具体动作]. */

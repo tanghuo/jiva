@@ -140,7 +140,7 @@ export async function startCodexAppServer(config, { cwd, onNotification = () => 
   void exited.then(() => signal?.removeEventListener("abort", abort));
   try {
     if (signal?.aborted) { abort(); signal.throwIfAborted(); }
-    const initialized = await request("initialize", { clientInfo: { name: "self_wiki", title: "self-wiki", version: "0.2.0" }, capabilities: { experimentalApi: true } });
+    const initialized = await request("initialize", { clientInfo: { name: "jiva", title: "Jiva", version: "0.2.0" }, capabilities: { experimentalApi: true } });
     write({ method: "initialized", params: {} });
     if (auth) await request("account/login/start", { type: "chatgptAuthTokens", ...auth });
     const account = await request("account/read", { refreshToken: false });

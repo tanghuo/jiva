@@ -45,7 +45,7 @@ export default function LocalPairing({ children }) {
       authentication = Promise.resolve(true); setCode(''); setReady(true);
     } catch (failure) { setError(failure.message); } finally { setBusy(false); }
   }}>
-    <PageHeader title="连接本机 self-wiki" subtitle={checked ? '使用本机启动器打开，或在本机运行 self-wiki pair 获取一次性配对链接。' : '正在连接…'} />
+    <PageHeader title="连接本机 Jiva" subtitle={checked ? '使用本机启动器打开，或在本机运行 jiva pair 获取一次性配对链接。' : '正在连接…'} />
     <label>一次性配对码或链接<input value={code} onChange={event => setCode(event.target.value)} autoComplete="off" spellCheck={false} required /></label>
     {error && <p role="alert">{error}</p>}
     <Button variant="primary" type="submit" disabled={busy || !checked || !code.trim()} title={busy ? '正在连接' : !checked ? '正在检测本机连接' : !code.trim() ? '请先填写一次性配对码或链接' : undefined}>连接</Button>

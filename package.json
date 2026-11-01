@@ -1,12 +1,12 @@
 {
-  "name": "self-wiki",
+  "name": "jiva",
   "version": "0.2.0",
   "private": true,
   "description": "A local personal wiki of images, videos, text and conversations.",
   "type": "module",
   "main": "src/main/main.js",
   "bin": {
-    "self-wiki": "src/cli/main.js"
+    "jiva": "src/cli/main.js"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -52,8 +52,8 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "local.self-wiki",
-    "productName": "self-wiki",
+    "appId": "local.jiva",
+    "productName": "Jiva",
     "files": [
       "dist/**",
       "src/main/**",
@@ -70,7 +70,7 @@
       "output": "release"
     },
     "win": {
-      "icon": "src/renderer/public/brand/self-wiki.ico",
+      "icon": "src/renderer/public/brand/jiva.ico",
       "target": [
         "portable"
       ]

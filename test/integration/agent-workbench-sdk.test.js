@@ -18,24 +18,24 @@ test('stdio SDK tools have no bearer and bind execution to the active turn and d
   sdk.end(); await assert.rejects(sdk.request(input), /活动轮次/); assert.equal(calls, 1);
 });
 test('MCP catalog must resolve fully and excludes all external servers, including a same-name impersonator', () => {
-  const definition = { name: 'self_wiki', serverId: 'fixture' };
+  const definition = { name: 'jiva', serverId: 'fixture' };
   assert.equal(verifyWorkbenchMcpCatalog({ sessionMcpResolved: true, servers: [] }).transport, 'none');
   assert.throws(() => verifyWorkbenchMcpCatalog({ sessionMcpResolved: true, servers: [{ name: 'foreign', session: { enabled: true } }] }), /其他 MCP/);
   assert.equal(verifyWorkbenchMcpCatalog({ servers: [] }).transport, 'none');
   assert.throws(() => verifyWorkbenchMcpCatalog({ servers: [], sessionMcpResolved: false }), /尚未就绪/);
   assert.throws(() => verifyWorkbenchMcpCatalog({ servers: [] }, definition), /未连接/);
-  assert.equal(verifyWorkbenchMcpCatalog({ servers: [{ name: 'self_wiki', type: 'stdio', command: '', args: [], env: [], session: { enabled: true, status: 'ready' } }], sessionMcpResolved: true }, definition).transport, 'acp');
-  for (const name of ['other', 'self_wiki']) assert.throws(() => verifyWorkbenchMcpCatalog({ sessionMcpResolved: true, servers: [{ name, type: 'http', session: { enabled: true } }] }, definition), /其他 MCP/);
+  assert.equal(verifyWorkbenchMcpCatalog({ servers: [{ name: 'jiva', type: 'stdio', command: '', args: [], env: [], session: { enabled: true, status: 'ready' } }], sessionMcpResolved: true }, definition).transport, 'acp');
+  for (const name of ['other', 'jiva']) assert.throws(() => verifyWorkbenchMcpCatalog({ sessionMcpResolved: true, servers: [{ name, type: 'http', session: { enabled: true } }] }, definition), /其他 MCP/);
 });
 
 test('MCP rejection diagnostics identify mismatches without retaining credentials or unbounded catalogs', () => {
   const secret = 'SECRET_MUST_NOT_BE_LOGGED';
-  const definition = { name: 'self_wiki', serverId: secret };
+  const definition = { name: 'jiva', serverId: secret };
   const server = { name: 'foreign', type: 'stdio', command: secret, args: [secret], env: [{ name: 'TOKEN', value: secret }], url: secret, session: { enabled: true, status: 'ready', tools: [secret], blockedReason: '' } };
   assert.throws(() => verifyWorkbenchMcpCatalog({ sessionMcpResolved: true, servers: Array(30).fill(server) }, definition), error => {
     const data = error.mcpDiagnostics;
     assert.equal(data.reason, 'sdk_server_mismatch');
-    assert.equal(data.expectedName, 'self_wiki');
+    assert.equal(data.expectedName, 'jiva');
     assert.equal(data.serverCount, 30); assert.equal(data.omittedServers, 10);
     assert.equal(data.servers.length, 20);
     assert.equal(data.servers[0].nameMatches, false);

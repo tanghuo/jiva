@@ -33,7 +33,7 @@ export function createAionuiView({ WebContentsView, window, shell, backend }) {
       if (address.protocol !== 'http:' || address.hostname !== '127.0.0.1' || !address.port) throw new Error('实验版地址无效');
       assertOpen();
       if (!view) {
-        view = new WebContentsView({ webPreferences: { partition: 'self-wiki-aionui-experiment', contextIsolation: true, nodeIntegration: false, sandbox: true } });
+        view = new WebContentsView({ webPreferences: { partition: 'jiva-aionui-experiment', contextIsolation: true, nodeIntegration: false, sandbox: true } });
         view.setVisible(false); window.contentView.addChildView(view);
         const external = url => { if (/^https?:/.test(url)) void shell.openExternal(url); };
         view.webContents.setWindowOpenHandler(({ url }) => { external(url); return { action: 'deny' }; });

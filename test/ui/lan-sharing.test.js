@@ -52,26 +52,26 @@ test("LAN sharing persists configuration, requires pairing, keeps local-only fea
   assert.equal(configured.status, 200);
   assert.deepEqual((await configured.json()).urls, initial.urls.map((url) => { const next = new URL(url); next.port = String(port); return next.href; }));
   assert.equal((await request("/api/lan-sharing", "POST", { enabled: true })).status, 200);
-  const paired = { "x-self-wiki-lan-token": token };
+  const paired = { "x-jiva-lan-token": token };
   const get = (route, headers = {}) => fetch(`${lan}${route}`, { headers: { ...paired, ...headers } });
   // Unpaired visitors get a pairing page or 401, never data.
   const unpaired = await fetch(lan);
   assert.equal(unpaired.status, 401);
   assert.match(await unpaired.text(), /需要局域网配对码/);
   assert.equal((await fetch(`${lan}/api/elements`)).status, 401);
-  assert.equal((await fetch(`${lan}/api/elements`, { headers: { "x-self-wiki-lan-token": "wrong-token-wrong-token" } })).status, 401);
+  assert.equal((await fetch(`${lan}/api/elements`, { headers: { "x-jiva-lan-token": "wrong-token-wrong-token" } })).status, 401);
   assert.equal((await fetch(`${lan}/?pair=wrong`, { redirect: "manual" })).status, 401);
   const pairing = await fetch(`${lan}/?pair=${token}&keep=1`, { redirect: "manual" });
   assert.equal(pairing.status, 303);
   assert.equal(pairing.headers.get("location"), "/?keep=1");
   const cookie = pairing.headers.get("set-cookie");
-  assert.match(cookie, /^self_wiki_lan_token=[^;]+; Path=\/; HttpOnly; SameSite=Strict/);
+  assert.match(cookie, /^jiva_lan_token=[^;]+; Path=\/; HttpOnly; SameSite=Strict/);
   assert.equal((await fetch(`${lan}/api/elements`, { headers: { cookie: cookie.split(";")[0] } })).status, 200);
   const home = await get("/");
   assert.match(await home.text(), /name="wiki-access" content="lan-edit"/);
   assert.equal(home.headers.get("content-security-policy"), "frame-ancestors 'none'");
-  assert.equal((await get("/brand/self-wiki-64.png")).status, 200);
-  assert.equal((await get("/brand/self-wiki-small.svg")).status, 200);
+  assert.equal((await get("/brand/jiva-64.png")).status, 200);
+  assert.equal((await get("/brand/jiva-small.svg")).status, 200);
   assert.equal((await (await get("/api/elements?q=第一行")).json()).elements[0].id, note.id);
   assert.deepEqual((await (await get("/api/tags")).json()).tags, ["共享", "隐藏标签"]);
   assert.equal((await (await get(`/api/elements/${note.id}/relations`)).json()).relations.length, 1);
@@ -120,7 +120,7 @@ test("LAN sharing persists configuration, requires pairing, keeps local-only fea
   assert.equal((await remote("/api/relations/1", "PATCH", { name: "局域网修改" })).status, 200);
   assert.equal((await get("/api/elements", { origin: "https://evil.test" })).status, 403);
   assert.equal((await fetch(`${lan}/api/elements`, { method: "POST", headers: { ...paired, origin: "https://evil.test", "content-type": "application/json" }, body: JSON.stringify({ body: "禁止跨站写入" }) })).status, 403);
-  assert.equal((await get("/api/elements", { "x-self-wiki-instance": "stale-instance" })).status, 409);
+  assert.equal((await get("/api/elements", { "x-jiva-instance": "stale-instance" })).status, 409);
   const invalidHost = await new Promise((resolve, reject) => {
     const req = httpRequest(`${lan}/api/elements`, { headers: { ...paired, host: `evil.test:${port}` } }, (res) => { res.resume(); resolve(res.statusCode); });
     req.on("error", reject); req.end();
@@ -137,8 +137,8 @@ test("LAN sharing persists configuration, requires pairing, keeps local-only fea
   const rotated = await (await request("/api/lan-sharing/token", "POST", {})).json();
   assert.notEqual(rotated.token, token);
   assert.equal((await get("/api/elements")).status, 401);
-  assert.equal((await fetch(`${lan}/api/elements`, { headers: { "x-self-wiki-lan-token": rotated.token } })).status, 200);
-  paired["x-self-wiki-lan-token"] = rotated.token;
+  assert.equal((await fetch(`${lan}/api/elements`, { headers: { "x-jiva-lan-token": rotated.token } })).status, 200);
+  paired["x-jiva-lan-token"] = rotated.token;
   assert.equal((await request("/api/lan-sharing", "PUT", { autoStart: true, port: port + (port === 65535 ? -1 : 1) })).status, 409);
   const before = JSON.parse(await readFile(path.join(dataDir, "lan-sharing.json"), "utf8"));
   assert.deepEqual(before, { autoStart: true, port, allowWrite: false, requireToken: true, token: rotated.token, pairingCode: rotated.pairingCode });
@@ -198,10 +198,10 @@ test("six-digit pairing requires a local window, is single-use, and preserves st
   const paired = await pair(pairingCode);
   assert.equal(paired.status, 303);
   const cookie = paired.headers.get("set-cookie").split(";")[0];
-  assert.equal(cookie, `self_wiki_lan_token=${token}`);
+  assert.equal(cookie, `jiva_lan_token=${token}`);
   assert.equal((await fetch(`${lan}/api/elements`, { headers: { cookie } })).status, 200);
   assert.equal((await pair(pairingCode)).status, 401, 'short code is single-use');
-  assert.equal((await fetch(`${lan}/api/elements`, { headers: { "x-self-wiki-lan-token": pairingCode } })).status, 401);
+  assert.equal((await fetch(`${lan}/api/elements`, { headers: { "x-jiva-lan-token": pairingCode } })).status, 401);
   const activeCode = await (await request('/api/lan-sharing/pairing', 'POST', {})).json();
   const wrong = activeCode.pairingCode === "000000" ? "000001" : "000000";
   for (let i = 0; i < 10; i++) assert.equal((await pair(wrong)).status, 401);
@@ -229,7 +229,7 @@ test("short codes expire, rotate locally and cannot be opened from LAN", async (
   const second = await (await request('/api/lan-sharing/pairing', 'POST', {})).json();
   assert.notEqual(first.pairingCode, second.pairingCode);
   assert.equal((await fetch(`${lan}/?pair=${first.pairingCode}`, { redirect: 'manual' })).status, 401);
-  assert.equal((await fetch(`${lan}/api/lan-sharing/pairing`, { method: 'POST', headers: { 'x-self-wiki-lan-token': status.token } })).status, 403);
+  assert.equal((await fetch(`${lan}/api/lan-sharing/pairing`, { method: 'POST', headers: { 'x-jiva-lan-token': status.token } })).status, 403);
   const now = Date.now;
   try {
     Date.now = () => second.pairingExpiresAt + 1;
@@ -248,7 +248,7 @@ test("existing long-token configuration gains a short code without revoking pair
     const saved = JSON.parse(await readFile(path.join(dataDir, "lan-sharing.json"), "utf8"));
     assert.equal(saved.token, token);
     assert.match(saved.pairingCode, /^\d{6}$/);
-    assert.equal((await fetch(`${lan}/api/elements`, { headers: { cookie: `self_wiki_lan_token=${token}` } })).status, 200);
+    assert.equal((await fetch(`${lan}/api/elements`, { headers: { cookie: `jiva_lan_token=${token}` } })).status, 200);
     assert.equal((await fetch(`${lan}/?pair=${saved.pairingCode}`, { redirect: "manual" })).status, 401, 'persisted short codes do not open a pairing window');
   } finally { await upgraded.close(); }
 });
@@ -283,7 +283,7 @@ test("LAN tag collections support editing and preserve normal trash visibility",
   assert.equal((await request(`${route}?pageSize=101`)).status, 400);
   await request("/api/lan-sharing", "PUT", { autoStart: false, port, allowWrite: true });
   const token = (await (await request("/api/lan-sharing")).json()).token;
-  const lanFetch = (url, options = {}) => fetch(url, { ...options, headers: { "x-self-wiki-lan-token": token, ...options.headers } });
+  const lanFetch = (url, options = {}) => fetch(url, { ...options, headers: { "x-jiva-lan-token": token, ...options.headers } });
   await request("/api/lan-sharing", "POST", { enabled: true });
   const members = await (await lanFetch(`${lan}${route}`)).json();
   assert.deepEqual(members.elements.map((e) => e.id), [member.id]);

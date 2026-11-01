@@ -7,7 +7,7 @@ import electron from "electron";
 const root = path.resolve(import.meta.dirname, "..");
 const packaged = process.argv.includes("--packaged");
 const dataDir = await mkdtemp(path.join(os.tmpdir(), "llb-desktop-smoke-"));
-const executable = packaged ? path.join(root, "release/win-unpacked/self-wiki.exe") : electron;
+const executable = packaged ? path.join(root, "release/win-unpacked/Jiva.exe") : electron;
 const env = { ...process.env, APP_DATA_DIR: path.join(dataDir, "data") };
 for (const key of ["ELECTRON_RUN_AS_NODE", "EXTERNAL_API_URL", "VITE_DEV_SERVER_URL", "API_PORT", "NODE_BINARY"]) delete env[key];
 try {

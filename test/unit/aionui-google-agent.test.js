@@ -13,7 +13,7 @@ test('missing Google ACP is optional; installed agents are reused or registered'
   assert.equal(await registerGoogleAgent({ api, agents: [], executable }), null);
   assert.equal(calls.length, 0);
   await writeFile(executable, 'fixture');
-  const existing = { id: 'old', name: 'Google 官方 ACP · self-wiki', agent_source: 'custom', command: executable, args: [] };
+  const existing = { id: 'old', name: 'Google 官方 ACP · Jiva', agent_source: 'custom', command: executable, args: [] };
   assert.equal(await registerGoogleAgent({ api, agents: [existing], executable }), existing);
   assert.equal(calls.length, 0);
   const created = await registerGoogleAgent({ api, agents: [], executable });

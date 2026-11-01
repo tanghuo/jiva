@@ -41,7 +41,7 @@
     {
       "phase": "application-tool",
       "permissionTool": "use_tool",
-      "target": "self_wiki_1884f40b1c204ab9994998c4179bf0fb__wiki_search"
+      "target": "jiva_1884f40b1c204ab9994998c4179bf0fb__wiki_search"
     },
     {
       "phase": "application-tool",
@@ -72,7 +72,7 @@
   ],
   "version": "1.0.70",
   "catalog": {
-    "server": "self_wiki_1884f40b1c204ab9994998c4179bf0fb",
+    "server": "jiva_1884f40b1c204ab9994998c4179bf0fb",
     "tools": [
       {
         "name": "wiki_search",
