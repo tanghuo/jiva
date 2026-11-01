@@ -27,7 +27,7 @@ test('desktop entry embeds automatically and hides the native view when switchin
   const { app, page } = await fixture(t);
   await page.addInitScript(() => { window.embeds = []; window.wikiDesktop = { async embedAionui(value) { window.embeds.push(value); return { state: 'running' }; }, openAionui() { throw new Error('Must not open another window'); } }; });
   await page.goto(app.url + '#wiki');
-  // The secondary Agent surfaces sit under 「更多」 in the sidebar.
+  // Experimental surfaces sit under 「更多」; the workbench is the primary entry.
   await page.getByRole('complementary', { name: '内容导航' }).getByRole('button', { name: '更多', exact: true }).click();
   await page.getByRole('link', { name: 'AionUi 实验版', exact: true }).click();
   await page.waitForFunction(() => window.embeds.some(value => value.type === 'show'));
@@ -38,6 +38,7 @@ test('desktop entry embeds automatically and hides the native view when switchin
   await page.waitForFunction(() => window.embeds.at(-1).type !== 'hide');
   await page.getByRole('link', { name: '切换原工作台' }).click();
   await page.waitForFunction(() => window.embeds.at(-1).type === 'hide');
+  await page.getByRole('complementary', { name: '内容导航' }).getByRole('button', { name: '更多', exact: true }).click();
   await page.getByRole('link', { name: 'AionUi 实验版', exact: true }).click();
   await page.waitForFunction(() => window.embeds.at(-1).type !== 'hide');
   assert.equal(page.context().pages().length, 1);

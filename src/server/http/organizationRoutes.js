@@ -10,6 +10,7 @@ export async function handleOrganizationRoute(organization, req, res, url) {
   if (route === "status" && method === "GET") result = organization.status(url.searchParams.has("elementId") ? elementId(url.searchParams.get("elementId")) : null, url.searchParams.has("before") ? elementId(url.searchParams.get("before")) : null);
   else if (route === "correct" && method === "POST") result = organization.correct(await readJson(req));
   else if (route === "config" && method === "PUT") result = await organization.configure(await readJson(req, { maxBytes: 1024 * 1024 }));
+  else if (route === "images/probe" && method === "POST") result = await organization.probeImages(await readJson(req));
   else if (route === "probe" && method === "POST") result = organization.probe();
   else if (route === "enqueue" && method === "POST") result = organization.enqueue((await readJson(req)).elementId);
   else if (route === "enqueue-texts" && method === "POST") result = organization.enqueueTexts(await readJson(req));

@@ -19,11 +19,14 @@ test('Antigravity picker, inline native notice and one-time approval work withou
   app = await createServer({ port: 0, dataDir: root, agentWorkbenchEnabled: true,
     async openWorkbenchEngine(settings, callbacks) {
       opened = { settings, callbacks };
-      return { sessionId: 'antigravity-ui', version: 'test', capabilities: { verified: true, approvalMode: 'ask', applicationTools: false }, cancel() {}, async close() {},
+      return { sessionId: 'antigravity-ui', version: 'test', capabilities: { verified: true, approvalMode: callbacks.approvalMode, applicationTools: false }, cancel() {}, async close() {},
         async prompt(text, delivery) {
           delivery('attempted');
-          const allow = await callbacks.onRequest('engine/antigravity_approval', { toolCall: { toolCallId: 'write-1', title: '写入 result.txt', kind: 'edit', rawInput: { path: 'result.txt' }, content: [{ type: 'diff', path: 'result.txt', oldText: '', newText: 'hello' }] } });
-          await callbacks.onEvent('message.delta', { text: allow ? 'Antigravity 已批准' : 'Antigravity 已拒绝' });
+          const toolCall = text === 'git status'
+            ? { toolCallId: 'status-1', title: 'git status', kind: 'execute', rawInput: { CommandLine: text, Cwd: callbacks.cwd, WaitMsBeforeAsync: 5000 } }
+            : { toolCallId: 'write-1', title: '写入 result.txt', kind: 'edit', rawInput: { path: 'result.txt' }, content: [{ type: 'diff', path: 'result.txt', oldText: '', newText: 'hello' }] };
+          const allow = await callbacks.onRequest('engine/antigravity_approval', { toolCall });
+          await callbacks.onEvent('message.delta', { text: allow ? text === 'git status' ? '状态查询已自动批准' : 'Antigravity 已批准' : 'Antigravity 已拒绝' });
           return { stopReason: 'end_turn' };
         },
       };
@@ -47,7 +50,15 @@ test('Antigravity picker, inline native notice and one-time approval work withou
   await page.getByLabel('选择推理强度').click();
   assert.equal(await page.getByRole('button', { name: '极高', exact: true }).count(), 0);
   await page.getByRole('button', { name: '中', exact: true }).click();
-  assert.equal(await page.locator('.workbench-launcher').getByLabel('审批模式').isDisabled(), true);
+  await page.locator('.workbench-launcher').getByLabel('审批模式').click();
+  const approvalMenu = page.getByRole('dialog', { name: '选择审批模式' });
+  await approvalMenu.getByText('自动批准文件编辑和项目内已识别的只读命令（如 git status）；其他命令仍需确认', { exact: true }).waitFor();
+  await approvalMenu.getByRole('button', { name: '自动审批', exact: true }).click();
+  await page.locator('.workbench-launcher').getByLabel('审批模式').filter({ hasText: '自动审批' }).waitFor();
+  await page.locator('.workbench-launcher').getByLabel('审批模式').click();
+  await page.getByRole('button', { name: '全部允许', exact: true }).click();
+  await page.locator('.workbench-launcher').getByLabel('审批模式').click();
+  await page.getByRole('button', { name: '手动审批', exact: true }).click();
   await page.getByLabel('任务内容').fill('用 Antigravity 测试');
   await page.getByText(/发送即确认使用 Antigravity 已有配置/).waitFor();
   await page.getByRole('button', { name: '发送', exact: true }).click();
@@ -62,6 +73,17 @@ test('Antigravity picker, inline native notice and one-time approval work withou
   await page.getByLabel('选择模型与推理强度').click();
   await page.getByRole('button', { name: 'Fixture Gemini', exact: true }).waitFor();
   assert.equal(catalogRequests, 1, 'existing sessions reuse the catalog loaded on entry');
+  await page.getByLabel('选择模型与推理强度').click();
+  const sessionApproval = page.locator('.workbench-composer').getByLabel('审批模式');
+  await sessionApproval.click();
+  await page.getByRole('dialog', { name: '选择审批模式' }).getByRole('button', { name: '自动审批', exact: true }).click();
+  await sessionApproval.filter({ hasText: '自动审批' }).waitFor();
+  await page.waitForFunction(() => !document.querySelector('.workbench-composer button[aria-label="审批模式"]')?.disabled);
+  await page.getByLabel('任务内容').fill('git status');
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  await page.getByText('状态查询已自动批准', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('region', { name: '待审批操作' }).count(), 0);
+  assert.equal(opened.callbacks.approvalMode, 'auto');
   assert.equal(loginRequests, 0); assert.deepEqual(errors, []);
 });
 

@@ -5,6 +5,7 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { terminateProcessTree } from './processTree.js';
 import { grokEnvironment } from './grokEnvironment.js';
+import { invalidateQuota } from './quotaEvents.js';
 
 export async function grokCommand(executable = "grok") {
   if (executable === "grok") {
@@ -14,7 +15,7 @@ export async function grokCommand(executable = "grok") {
   return /\.(?:mjs|cjs|js)$/i.test(executable) ? { executable: process.execPath, prefix: [executable] } : { executable, prefix: [] };
 }
 
-export async function startGrokAcp(config, { cwd, signal, onNotification = () => {}, onRequest = async () => { throw new Error("Unsupported client request"); }, onExit = () => {}, pausePromptTimeoutOnRequest = false }) {
+export async function startGrokAcp(config, { cwd, signal, onNotification = () => {}, onRequest = async () => { throw new Error("Unsupported client request"); }, onExit = () => {}, pausePromptTimeoutOnRequest = false, quotaOnly = false }) {
   signal?.throwIfAborted();
   const command = await grokCommand(config.executable);
   // ACP tool filters and permission rules are distinct; only use denial rules
@@ -24,14 +25,14 @@ export async function startGrokAcp(config, { cwd, signal, onNotification = () =>
   const child = spawn(command.executable, [...command.prefix, "--no-auto-update", ...permission, ...denials, "agent", "--no-leader", "-m", config.model, "stdio"],
     { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', env: { ...grokEnvironment(), GROK_MEMORY: "0", ...(config.agentProfileName && { GROK_AGENT: config.agentProfileName }) }, stdio: ["pipe", "pipe", "pipe"] });
   const decoder = new StringDecoder("utf8"), pending = new Map();
-  let sequence = 0, buffer = "", ended = false, closing = false, closePromise, hostRequests = 0;
+  let sequence = 0, buffer = "", ended = false, closing = false, closePromise, hostRequests = 0, quotaBytes = 0;
   const write = (value) => { if (!ended && !child.stdin.destroyed) child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...value }) + "\n"); };
   function fail(error) {
     if (ended) return; ended = true;
     for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(error); } pending.clear();
     if (!closing) onExit(error);
   }
-  function request(method, params = {}, timeout = 30000) {
+  function request(method, params = {}, timeout = quotaOnly ? 10000 : 30000) {
     if (ended) return Promise.reject(new Error("Grok ACP 连接已关闭"));
     return new Promise((resolve, reject) => {
       const id = ++sequence;
@@ -67,16 +68,17 @@ export async function startGrokAcp(config, { cwd, signal, onNotification = () =>
         // Only include known configuration diagnostics. Arbitrary RPC data and
         // stderr can contain account data and must not enter persisted errors.
         const detail = typeof value.error.data === 'string' && value.error.data.startsWith('session initialization failed: invalid configuration:') ? ` — ${value.error.data.slice(0, 1200)}` : '';
-        entry.reject(Object.assign(new Error(`${entry.method}: ${String(value.error.message || "Grok 请求失败").slice(0, 300)}${detail}`), { details: value.error.data }));
+        entry.reject(Object.assign(new Error(`${entry.method}: ${String(value.error.message || "Grok 请求失败").slice(0, 300)}${detail}`), { code: value.error.code, details: value.error.data }));
       }
-      else entry.resolve(value.result);
+      else { if (!quotaOnly && entry.method === 'session/prompt') invalidateQuota('grok', config); entry.resolve(value.result); }
     } else if (value.method) {
       Promise.resolve(onNotification(value.method, value.params || {})).catch((error) => { fail(error); void close(); });
     }
   }
   child.stdout.on("data", (chunk) => {
+    if (quotaOnly && (quotaBytes += chunk.length) > 1024 * 1024) { fail(new Error('Grok 额度输出超过限制')); void close(); return; }
     buffer += decoder.write(chunk);
-    if (buffer.length > 40 * 1024 * 1024) { fail(new Error("Grok ACP 事件超过限制")); void close(); return; }
+    if (buffer.length > (quotaOnly ? 1024 * 1024 : 40 * 1024 * 1024)) { fail(new Error("Grok ACP 事件超过限制")); void close(); return; }
     let newline;
     while ((newline = buffer.indexOf("\n")) >= 0) {
       const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);

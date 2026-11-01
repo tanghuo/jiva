@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { startCodexAppServer } from '../executors/codexAppServer.js';
 import { acquireExternalResource } from '../executors/resourceGate.js';
+import { approvalMode } from '../../shared/domain/agentWorkbench/approvalPolicy.js';
+
+export function codexTurnPolicy(mode = 'ask') {
+  const selected = approvalMode(mode, 'codex-cli');
+  if (selected === 'allow') return { mode: selected, approvalPolicy: 'never', approvalsReviewer: 'user', sandboxPolicy: { type: 'workspaceWrite', networkAccess: false } };
+  if (selected === 'auto') return { mode: selected, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandboxPolicy: { type: 'workspaceWrite', networkAccess: false } };
+  return { mode: selected, approvalPolicy: 'untrusted', approvalsReviewer: 'user', sandboxPolicy: { type: 'readOnly', networkAccess: false } };
+}
 
 const disabled = ['computer_use', 'browser_use_external', 'code_mode', 'code_mode_only', 'multi_agent_v2', 'goals', 'in_app_local_automation', 'sleep_tool', 'request_permissions_tool', 'unbounded_connection_retries'];
 const overrides = () => disabled.map(name => `features.${name}=false`);
@@ -34,7 +42,8 @@ export async function describeCodexWorkbench(config, { cwd, signal }) {
   try { checkVersion(client); if (!client.account.account && client.account.requiresOpenaiAuth !== false) throw new Error('请先在本机登录 Codex'); return { models: await client.models(), defaultModel: client.defaultModel, defaultEffort: client.defaultEffort, version: client.version }; }
   finally { await client.close(); }
 }
-export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, signal, onRequest, onEvent, onExit, tools = [], onToolCall }) {
+export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, signal, onRequest, onEvent, onExit, tools = [], onToolCall, approvalMode: mode = 'ask' }) {
+  const turnPolicy = codexTurnPolicy(mode);
   let client, thread, turn, prompting = false, closed = false, completion, timer;
   let remaining, timerStarted, approvalWaits = 0;
   function armTimer() {
@@ -106,7 +115,7 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
     if (result.model && result.model !== config.codexCli.model) throw new Error('Codex 返回模型与会话固定模型不一致，禁止静默替换');
     await verifyMcp(client, cwd, thread);
     return {
-      sessionId: thread, version: client.version, capabilities: { verified: true, resume: true, clientFiles: false, clientTerminal: false, approval: 'native', fileReads: 'native_full_disk', nativePolicy: result.sandbox, applicationTools: tools.length > 0, images: true },
+      sessionId: thread, version: client.version, capabilities: { verified: true, resume: true, clientFiles: false, clientTerminal: false, approval: 'native', approvalMode: turnPolicy.mode, fileReads: 'native_full_disk', nativePolicy: result.sandbox, applicationTools: tools.length > 0, images: true },
       async prompt(text, onDelivery = () => {}, images = []) {
         if (prompting || closed) throw new Error('Codex 会话不可发送');
         const release = await acquireExternalResource('codex', signal);
@@ -115,7 +124,7 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
           prompting = true; turn = null; items.clear(); commands.clear(); completion = Promise.withResolvers(); completion.promise.catch(() => {});
           remaining = 30 * 60 * 1000; armTimer();
           onDelivery('attempted');
-          const response = await client.request('turn/start', { threadId: thread, model: config.codexCli.model, ...(config.effort && { effort: config.effort }), approvalPolicy: 'untrusted', approvalsReviewer: 'user', sandboxPolicy: { type: 'readOnly', networkAccess: false }, input: [{ type: 'text', text }, ...images.map(image => ({ type: 'image', url: `data:${image.mimeType};base64,${image.data}` }))] }, 60000);
+          const response = await client.request('turn/start', { threadId: thread, model: config.codexCli.model, ...(config.effort && { effort: config.effort }), approvalPolicy: turnPolicy.approvalPolicy, approvalsReviewer: turnPolicy.approvalsReviewer, sandboxPolicy: turnPolicy.sandboxPolicy, input: [{ type: 'text', text }, ...images.map(image => ({ type: 'image', url: `data:${image.mimeType};base64,${image.data}` }))] }, 60000);
           turn ||= response.turn.id; return await completion.promise;
         } finally { clearTimeout(timer); prompting = false; completion = null; release(); }
       },

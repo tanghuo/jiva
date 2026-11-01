@@ -45,7 +45,7 @@ test('Antigravity reuses authentication, verifies manual mode and model/effort, 
   await assert.rejects(f.open({ effort: 'xhigh' }), /不支持此推理强度/);
   await assert.rejects(f.open({}, { tools: [{ name: 'wiki_search' }] }), /不支持受限/);
   await assert.rejects(f.open({}, { restricted: true }), /不支持受限/);
-  await assert.rejects(f.open({}, { approvalMode: 'allow' }), /仅支持手动审批/);
+  await assert.rejects(f.open({}, { approvalMode: 'invalid' }), /无效/);
 });
 test('Antigravity authentication is explicit and model detection never silently logs in', async t => {
   const f = await fixture(t, false);
@@ -54,6 +54,33 @@ test('Antigravity authentication is explicit and model detection never silently 
   const connected = await describeAntigravityWorkbench(f.settings, { ...f.callbacks, authenticate: true });
   assert.equal(connected.models[0].id, 'fixture-model');
   const client = await f.open(); await client.prompt('hello');
+});
+
+test('Antigravity uses native auto-edit and yolo modes and reapplies policy on restore', async t => {
+  const f = await fixture(t);
+  const automatic = await f.open({}, { approvalMode: 'auto' });
+  assert.equal(automatic.capabilities.approvalMode, 'auto');
+  await automatic.prompt('WRITE');
+  assert.equal(await readFile(path.join(f.root, 'result.txt'), 'utf8'), 'approved\n');
+  assert.equal(f.requests.length, 0);
+  await automatic.prompt('EXECUTE');
+  assert.equal(f.requests.length, 1, 'commands still require a decision in auto-edit mode');
+  await automatic.close();
+  const allowed = await f.open({}, { approvalMode: 'allow', sessionId: automatic.sessionId });
+  assert.equal(allowed.capabilities.approvalMode, 'allow');
+  await allowed.prompt('EXECUTE');
+  assert.equal(f.requests.length, 1, 'yolo delegates execution to the provider');
+  await allowed.close();
+  const manual = await f.open({}, { approvalMode: 'ask', sessionId: automatic.sessionId });
+  await manual.prompt('WRITE');
+  assert.equal(f.requests.length, 2, 'restoring with manual mode must reset the native yolo policy');
+});
+
+test('Antigravity refuses to send when the server does not confirm the selected mode', async t => {
+  const f = await fixture(t);
+  await writeFile(path.join(f.root, '.ignore-mode'), 'yes');
+  await assert.rejects(f.open({}, { approvalMode: 'auto' }), /未确认/);
+  await assert.rejects(readFile(path.join(f.root, 'last-prompt.json')), { code: 'ENOENT' });
 });
 test('Antigravity native approvals accept/reject once, never grant always, and expose provider diffs without undo', async t => {
   const f = await fixture(t);
@@ -111,7 +138,11 @@ test('workbench exposes Antigravity, requires native trust, disables application
   assert.throws(() => service.createSession({ ...input, nativeReadAccepted: false }), { code: 'NATIVE_READ_CONFIRMATION' });
   assert.throws(() => service.createSession({ ...input, model: '' }), { code: 'MODEL_REQUIRED' });
   assert.throws(() => service.createSession({ ...input, model: 123 }), { code: 'MODEL_REQUIRED' });
-  assert.throws(() => service.createSession({ ...input, approvalMode: 'allow' }), { code: 'UNSUPPORTED_POLICY' });
+  const automatic = service.createSession({ ...input, approvalMode: 'auto' });
+  assert.equal(automatic.policy.approvalMode, 'auto');
+  const updated = await service.policy(automatic.id, { revision: automatic.revision, approvalMode: 'allow' });
+  assert.equal(updated.policy.approvalMode, 'allow');
+  await assert.rejects(service.policy(automatic.id, { revision: updated.revision, readRoots: [] }), { code: 'NATIVE_POLICY' });
   const session = service.createSession(input);
   assert.equal(session.data.effort, 'medium');
   assert.equal(session.data.applicationTools, false);
@@ -119,8 +150,15 @@ test('workbench exposes Antigravity, requires native trust, disables application
   const until = async fn => { for (let i = 0; i < 400; i++) { const result = fn(); if (result) return result; await new Promise(resolve => setTimeout(resolve, 10)); } throw new Error('timeout'); };
   const approval = await until(() => service.detail(session.id).approvals[0]);
   assert.equal(approval.operation.provider, 'Antigravity'); assert.equal(approval.expiresAt, 0); assert.deepEqual(engineOptions.tools, []);
+  await service.policy(session.id, { revision: repo.session(session.id).revision, approvalMode: 'allow' });
+  assert.equal(engineOptions.approvalMode, 'ask', 'changing policy leaves the active turn manual');
   service.decide(approval.id, { decision: 'allow', revision: approval.policyRevision, operationHash: approval.operationHash });
   await until(() => repo.turn(turn.id).state === 'completed');
+  const automaticTurn = service.submit(session.id, { text: 'EXECUTE', requestKey: 'antigravity-allow' });
+  await until(() => repo.turn(automaticTurn.id).state === 'completed');
+  assert.equal(engineOptions.approvalMode, 'allow');
+  assert.equal(service.detail(session.id).approvals.length, 0);
+  await service.policy(session.id, { revision: repo.session(session.id).revision, approvalMode: 'ask' });
   const second = service.submit(session.id, { text: 'WRITE', requestKey: 'antigravity-write-2' });
   const pending = await until(() => service.detail(session.id).approvals[0]);
   await service.cancel(second.id);

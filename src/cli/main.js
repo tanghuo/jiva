@@ -185,7 +185,7 @@ async function execute(command, options, positional) {
   if (command.action === "download") {
     return saveDownload(result, path.resolve(options.output));
   }
-  if (command.action === "purge" && (result.failed?.length || result.cleanupFailed?.length || result.historyCleanupFailed?.length)) {
+  if (command.action === "purge" && (result.failed?.length || result.cleanupFailed?.length)) {
     throw new CliError("PARTIAL_FAILURE", "Some trash records or files could not be deleted; inspect details before retrying", 1, result);
   }
   return result;

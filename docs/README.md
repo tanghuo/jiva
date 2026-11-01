@@ -4,10 +4,10 @@
 
 - [AionUi 应用内实验入口](aionui-experiment.md)：在同一窗口与原工作台切换比较，接现有官方 Antigravity ACP 和 Grok；[集成方案](aionui-integration-design.md)。
 
-- **[通用 Agent 工作台重构](agent-workbench-plan.md)**：[实施进度与实机报告](agent-workbench-progress.md)、[使用说明](agent-workbench-usage.md)、[最终验证](agent-workbench-final-validation-2026-10-29.json)。P0–P6 与批次 A/B 已完成；默认关闭，启用后支持 Grok/Codex、审批、Wiki/图片/工作流任务与旧聊天转接。
+- **[通用 Agent 工作台重构](agent-workbench-plan.md)**：[实施进度与实机报告](agent-workbench-progress.md)、[使用说明](agent-workbench-usage.md)、[最终验证](agent-workbench-final-validation-2026-10-29.json)。工作台现为唯一 Agent 主入口并默认启用，支持多引擎、审批、Wiki/图片/工作流任务；旧聊天模块与记录在 schema 46 清理。
 
 - [使用与配置](usage.md)、[CLI](cli.md)、[本机连接与认证](local-authentication.md)、[设计系统](design-system.md)。
-- [聊天引擎](chat-engines.md)、[生图配置](image-generation.md)、[调用记录](chat-call-records.md)、[Token 用量](token-usage.md)、[Token 效率](token-efficiency.md)。
+- [工作台引擎](chat-engines.md)、[生图配置](image-generation.md)、[Token 用量](token-usage.md)、[Token 效率](token-efficiency.md)。
 - [工作流指南](workflows.md)、[工作流执行契约](workflow-design-and-implementation.md)。
 - [视频标注与相似检索](video-auto-annotation-design.md)、[视频首帧整理](video-first-frame-organization.md)。
 - [语义检索](semantic-retrieval-design.md)、[搜索相关性](search-relevance.md)。
@@ -19,6 +19,8 @@
 - [工作流界面整理](workflow-ux-redesign.md)：主体已实现，但文件仍在修改且有“命名的最终输出”待设计事项，保留。
 
 ## 保留的历史设计
+
+旧聊天设计和调用记录仅作为历史资料，不代表当前入口或接口；当前行为见工作台指南。
 
 - [Wiki 聊天设计](wiki-chat-design.md)、[自动整理设计](agent-organization-design.md)保留旧业务约束与迁移背景；其中日期更新前后的描述可能不同，不作为新工作台契约。
 - 当前行为以代码、测试和使用指南为准。新工作台不自动继承历史文档中的 LAN 开放策略、固定生图指令或工具权限。

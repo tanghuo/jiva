@@ -8,9 +8,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { generateChatgptWeb, probeChatgptWeb } from "../../src/agent/executors/chatgptWeb.js";
 import { defaultOrganizationConfig, organizationConfig } from "../../src/shared/domain/organization.js";
-import { createChatImageExecutor } from "../../src/server/application/chatImageExecutor.js";
 import { initDb } from "../../src/server/data/sqlite.js";
-import { createChatRepository } from "../../src/server/data/chatRepository.js";
 
 const python = process.env.TEST_PYTHON || "python";
 const pythonReady = spawnSync(python, ["--version"], { windowsHide: true }).status === 0;
@@ -31,32 +29,6 @@ test("existing configs default to Codex images and validate new backend options"
   const old = defaultOrganizationConfig(); delete old.imageGeneration;
   assert.equal(organizationConfig(old).imageGeneration.executor, "codex-cli");
   assert.throws(() => organizationConfig({ ...old, imageGeneration: { executor: "unknown" } }));
-  const native = createChatImageExecutor(organizationConfig(old).imageGeneration);
-  assert.equal(native.mode, "native");
-  assert.equal(native.generate, undefined, "Native generation belongs to the model session");
-  assert.equal(native.tool, undefined);
-  assert.throws(() => createChatImageExecutor({ executor: "unknown" }), /不支持/);
-});
-webTest("executor selection snapshots settings and binds direct images to their own conversation", async (t) => {
-  const f = await fixture(t), db = initDb(":memory:");
-  t.after(() => db.close());
-  const repo = createChatRepository(db), session = repo.create("images"), other = repo.create("other");
-  const config = { executor: "codex-cli", chatgptWeb: f.config };
-  const executor = createChatImageExecutor(config, { repo, sessionId: session.id, direct: true });
-  config.chatgptWeb.browser = "changed-after-turn-start";
-  assert.equal(executor.id, "chatgpt-web");
-  assert.equal(executor.directInput, true);
-  assert.equal((await executor.probe(f.root)).available, true);
-  const events = [];
-  const result = await executor.generate({ prompt: "  literal prompt\n", referencePaths: [], size: "auto" }, {
-    workspace: f.root, verbatim: true, onProgress: (event) => events.push(event),
-  });
-  assert.ok(result.bytes.length);
-  assert.equal((await f.commands()).find((command) => command.args[0] === "keyboard").args[2], "  literal prompt\n");
-  assert.equal(repo.webConversation(session.id, 0), "https://chatgpt.com/c/fixture");
-  assert.equal(repo.webConversation(other.id, 0), "");
-  assert.ok(events.some((event) => event.type === "progress" && event.message === "正在打开 ChatGPT 页面"));
-  assert.equal(events.find((event) => event.type === "metadata").metadata.conversationUrl, "https://chatgpt.com/c/fixture");
 });
 webTest("web executor probes, generates through upstream and preserves literal prompts and conversations", async (t) => {
   const f = await fixture(t), events = [];

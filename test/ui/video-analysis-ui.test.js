@@ -1,3 +1,4 @@
+import { stubWorkbenchModels } from '../helpers/workbenchModels.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -73,7 +74,8 @@ async function setup(t) {
     await rm(dataDir, { recursive: true, force: true, maxRetries: 3 });
   });
   browser = await chromium.launch({ executablePath: browserPath, headless: true });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(12000);
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await stubWorkbenchModels(page); page.setDefaultTimeout(12000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message)); t.after(() => assert.deepEqual(errors, []));
   async function upload(file, name) {
     const response = await fetch(new URL("api/videos", app.url), { method: "POST", headers: { "x-file-name": encodeURIComponent(name) }, body: await readFile(new URL(`../fixtures/${file}`, import.meta.url)) });
@@ -116,7 +118,7 @@ async function setup(t) {
       state.searches.push(Object.fromEntries(url.searchParams));
       return json({ matches: !state.visualRejected && (url.searchParams.get("frameId") || url.searchParams.get("q")) ? [{ elementId: target.id, kind: "video", label: "相似视频.mp4", frameId: "frame-2", startMs: 400, endMs: 900, score: 0.78, thumbnailUrl: "/api/video-analysis/frames/frame-2" }] : [], diagnostic: "" });
     }
-    return route.continue();
+    return route.fallback();
   });
   await page.goto(`${app.url}#wiki`);
   return { app, page, video, target, state };
@@ -154,7 +156,7 @@ test("automatic video annotation UI resumes, cancels, applies and rejects versio
   await page.getByRole("heading", { name: "相似视频.mp4", exact: true }).waitFor();
   await page.waitForFunction(() => { const video = document.querySelector(".wiki-detail video"); return video?.paused && Math.abs(video.currentTime - 0.9) < 0.04; });
   assert.ok(state.searches.some((query) => query.elementId === String(video.id) && query.frameId === "frame-1"));
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
+  await page.getByRole("link", { name: "Agent 工作台", exact: true }).click();
   await page.evaluate(() => { window.location.hash = "wiki"; });
   await page.locator(".wiki-detail video").waitFor({ state: "visible" });
   await page.waitForTimeout(350);
@@ -212,8 +214,8 @@ test("selecting an evidence frame exits text search even when choosing the same 
     await similar.getByRole("button", { name: "搜索", exact: true }).click();
     await textSearch;
     if (query === "再次输入文字") {
-      await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
-      await page.getByRole("main", { name: "Agent 对话", exact: true }).waitFor();
+      await page.getByRole("link", { name: "Agent 工作台", exact: true }).click();
+      await page.getByRole("main", { name: "Agent 工作台", exact: true }).waitFor();
       await page.getByRole("button", { name: "全部内容", exact: true }).click();
       await similar.getByRole("button", { name: "返回当前内容的相似画面", exact: true }).waitFor();
       assert.equal(await similar.getByLabel("用文字搜索画面", { exact: true }).inputValue(), query);

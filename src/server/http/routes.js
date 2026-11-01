@@ -2,7 +2,6 @@ import { httpError, json, text, readJson, serveStatic } from "./http.js";
 import { handleElementRoute } from "./elementRoutes.js";
 import { handleOrganizationRoute } from "./organizationRoutes.js";
 import { handleVideoAnalysisRoute } from "./videoAnalysisRoutes.js";
-import { handleChatRoute } from "./chatRoutes.js";
 import { handleWorkflowRoute } from './workflowRoutes.js';
 import { handleTemporaryShareRoute, handleSharedDownloadRoute } from "./temporaryShareRoutes.js";
 import { validateLanRequest, lanRequestToken, lanTokenMatches, lanRestriction, lanPairingPage, lanTokenCookie } from "./lanRoutes.js";
@@ -10,8 +9,9 @@ import { createPairingLimiter } from "./pairingLimiter.js";
 import { handleLocalAuthRoute } from './localAuthRoutes.js';
 import { handleAgentWorkbenchRoute } from './agentWorkbenchRoutes.js';
 import { handleAionuiExperimentRoute } from './aionuiExperimentRoutes.js';
+import { handleQuotaRoute } from './quotaRoutes.js';
 
-export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, chat, workflow, agentWorkbench, agentTasks, aionuiExperiment, usage, instance, authentication, rendererDist, access = "local" }) {
+export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, workflow, agentWorkbench, agentTasks, aionuiExperiment, quota, usage, instance, authentication, rendererDist, access = "local" }) {
   const routes = new Map([
     ["GET /api/token-usage", async (_req, res, url) => {
       const days = Number(url.searchParams.get("days") ?? 7);
@@ -82,7 +82,7 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
           res.setHeader('cache-control', 'no-store');
           const management = authentication?.isManagement(req), worker = !management && authentication?.isWorker(req, url);
           if (worker) req.localPrincipal = 'organizer-worker';
-          if (!management && !worker && !chat?.authorizeToolRequest?.(req, url)) {
+          if (!management && !worker) {
             throw httpError(401, '需要本机配对或管理凭据');
           }
         }
@@ -90,11 +90,11 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
       if (req.headers["x-self-wiki-instance"] && req.headers["x-self-wiki-instance"] !== instance?.instanceId) {
         throw httpError(409, "Server instance changed; reconnect before retrying");
       }
+      if (quota && await handleQuotaRoute(quota, req, res, url, access)) return;
       if (aionuiExperiment && await handleAionuiExperimentRoute(aionuiExperiment, req, res, url, access)) return;
       if (workflow && await handleWorkflowRoute(workflow, req, res, url, access)) return;
       if (agentWorkbench && await handleAgentWorkbenchRoute(agentWorkbench, req, res, url, access, agentTasks)) return;
       if (temporaryShares && await handleTemporaryShareRoute(temporaryShares, req, res, url, access)) return;
-      if (chat && await handleChatRoute(chat, req, res, url)) return;
       if (organization && await handleOrganizationRoute(organization, req, res, url)) return;
       if (videoAnalysis && await handleVideoAnalysisRoute(videoAnalysis, req, res, url)) return;
       if (wiki && await handleElementRoute(wiki, req, res, url, semantic, { allowTrashPreview: access === "local", allowUsageStats: access === "local", allowMaterialWrite: access === "local" })) return;

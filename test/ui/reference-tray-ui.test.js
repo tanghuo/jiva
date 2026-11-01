@@ -1,3 +1,4 @@
+import { stubWorkbenchModels } from '../helpers/workbenchModels.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -23,6 +24,7 @@ async function setup(t) {
       executablePath: browserPath, headless: true, viewport: { width: 1360, height: 950 },
     });
     page = context.pages()[0]; page.setDefaultTimeout(10000);
+    await stubWorkbenchModels(page);
     page.on("pageerror", (error) => errors.push(error.message));
   }
   t.after(async () => {
@@ -229,7 +231,7 @@ test("editing and deleting Wiki content invalidates already loaded references", 
   await tray.getByText(other.body, { exact: true }).waitFor();
 });
 
-test("entering chat revalidates complete references and a transient failure can be retried without consuming them", options, async (t) => {
+test("entering the workbench revalidates complete references and a transient failure can be retried without consuming them", options, async (t) => {
   const fixture = await setup(t), page = fixture.page;
   const note = await fixture.api("elements", "POST", { body: "进入前的旧参考" });
   const deleted = await fixture.api("elements", "POST", { body: "进入前已删除的参考" });
@@ -252,10 +254,10 @@ test("entering chat revalidates complete references and a transient failure can 
   await tray.getByRole("button", { name: "重试", exact: true }).click();
   await tray.getByText("进入时读取最新参考", { exact: true }).waitFor();
   await tray.getByRole("button", { name: "带着资料问 Agent", exact: true }).click();
-  await page.locator('.chat-selected [title="进入时读取最新参考"]').waitFor();
+  await page.getByRole('group', { name: '引用资料' }).getByRole('button', { name: '进入时读取最新参考', exact: true }).waitFor();
   assert.equal(requests, 3, "Entry must revalidate again after a successful retry");
   assert.deepEqual(await savedIds(page), []);
-  assert.equal(await page.locator(".chat-selected > span").count(), 1);
+  assert.equal(await page.getByRole("group", { name: "引用资料" }).getByRole("button").count(), 1);
 });
 
 test("renaming a confirmed relation through vocabulary settings preserves both endpoint groups", options, async (t) => {

@@ -6,17 +6,19 @@ import { agentError, requestKey, agentText, activeTurnStates } from '../../../sh
 import { registerWorkspace, containsPath, pathIdentity, localPath } from './workspaces.js';
 import { createFileGateway } from './files.js';
 import { workflowAgentTools, workflowCallChain } from '../../../shared/domain/agentWorkbench/workflow.js';
-import { createLegacyConversion } from './legacy.js';
+import { createWikiTemplate } from './wikiTemplate.js';
 import { approvalMode } from '../../../shared/domain/agentWorkbench/approvalPolicy.js';
 import { toolStatus } from '../../../shared/domain/agentWorkbench/events.js';
 import { createTurnChanges } from './changes.js';
+import { antigravityReadOnlyCommand } from './antigravityApproval.js';
 
-export async function createAgentWorkbenchService({ repo, dataDir, executionConfig, legacyChat, wiki, openEngine = openWorkbenchEngine, describeGrok = describeGrokWorkbench, describeAntigravity = describeAntigravityWorkbench, initiallyEnabled = false, tools, tasks, commandStore, applicationToolsVerified = false, codexVerified = false }) {
+export async function createAgentWorkbenchService({ repo, dataDir, executionConfig, wiki, openEngine = openWorkbenchEngine, describeGrok = describeGrokWorkbench, describeAntigravity = describeAntigravityWorkbench, initiallyEnabled = true, tools, tasks, commandStore, applicationToolsVerified = false, codexVerified = false }) {
   const configFile = path.join(dataDir, 'agent-workbench.json'), neutralCwd = path.join(dataDir, 'agent-runtime', 'neutral');
   await mkdir(neutralCwd, { recursive: true });
   const config = await readFile(configFile, 'utf8').then(JSON.parse).catch(error => { if (error.code === 'ENOENT') return {}; throw error; });
-  let enabled = config.agentWorkbenchEnabled ?? initiallyEnabled, closing = false, antigravityConnection;
+  let enabled = config.primaryWorkbench ? (config.agentWorkbenchEnabled ?? initiallyEnabled) : initiallyEnabled, closing = false, antigravityConnection;
   const active = new Map(), waiting = new Map(), resuming = new Map();
+  const modelReads = new Set(), modelController = new AbortController();
   repo.recover();
   const turnChanges = createTurnChanges({ repo, dataDir });
   function ready() { if (!enabled || closing) throw agentError('WORKBENCH_DISABLED', '工作台尚未启用或正在关闭', 409); }
@@ -37,11 +39,22 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
   async function approve(turn, operation, engine) {
     assertLive(turn);
     const session = repo.session(turn.sessionId);
-    const mode = approvalMode(session.policy.approvalMode, session.engine);
+    const mode = active.get(turn.id)?.approvalMode || approvalMode(session.policy.approvalMode, session.engine);
+    if (session.engine === 'antigravity-acp' && mode === 'auto' && operation.kind === 'engine.permission'
+        && engine?.capabilities?.verified === true && engine.capabilities.approvalMode === mode
+        && await antigravityReadOnlyCommand(operation, repo.workspace(session.workspaceId))) {
+      assertLive(turn);
+      repo.event(turn.id, turn.generation, 'approval.automatic', { operation, policyRevision: session.revision, mode, source: 'workbench', reason: 'read_only_command' });
+      return true;
+    }
     if (['file.write', 'command'].includes(operation.kind) && session.engine === 'grok-build'
         && engine?.capabilities?.verified === true && engine.capabilities.approvalMode === mode
         && ['auto', 'allow'].includes(mode)) {
       repo.event(turn.id, turn.generation, 'approval.automatic', { operation, policyRevision: session.revision, mode, source: mode === 'auto' ? 'grok' : 'workbench' });
+      return true;
+    }
+    if (session.engine === 'codex-cli' && mode === 'allow' && String(operation.kind || '').startsWith('native.')) {
+      repo.event(turn.id, turn.generation, 'approval.automatic', { operation, policyRevision: session.revision, mode, source: 'workbench' });
       return true;
     }
     if (operation.kind === 'file.write' && session.policy.write === 'allow_workspace') return true;
@@ -63,6 +76,7 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
       repo.event(turn.id, turn.generation, 'workspace.baseline', snapshot);
       const emit = (type, data) => { emitted = emitted.then(() => { assertLive(turn); return repo.event(turn.id, turn.generation, type, data); }); return emitted; };
       const mode = approvalMode(session.policy.approvalMode, session.engine);
+      job.approvalMode = mode;
       const files = createFileGateway({ workspace, readRoots: session.policy.readRoots || [], assertLive: () => assertLive(turn), approve: operation => approve(turn, operation, engine), onChange: change => emit('file.changed', change) });
       terminals = createTerminalRuntime({ approve: async operation => {
         assertLive(turn);
@@ -104,7 +118,7 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
             if (session.engine !== 'antigravity-acp' || !session.data.nativeReadAccepted) throw agentError('UNSUPPORTED_REQUEST', '此会话不允许 Antigravity 原生操作');
             const call = params.toolCall;
             if (!call || typeof call.toolCallId !== 'string' || Buffer.byteLength(JSON.stringify(call)) > 2 * 1024 * 1024) return false;
-            const allowed = await approve(turn, { kind: 'engine.permission', provider: 'Antigravity', tool: call.kind || 'other', title: call.title || 'Antigravity 原生操作', input: call.rawInput || {}, content: call.content || [], locations: call.locations || [] });
+            const allowed = await approve(turn, { kind: 'engine.permission', provider: 'Antigravity', tool: call.kind || 'other', title: call.title || 'Antigravity 原生操作', input: call.rawInput || {}, content: call.content || [], locations: call.locations || [] }, engine);
             assertLive(turn); return allowed;
           }
           if (method === 'engine/native_approval') {
@@ -168,8 +182,7 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
     }
   }
   const service = {
-    async wikiTemplate(value = {}) { ready(); return convertLegacy(null, value); },
-    async continueLegacy(id, value = {}) { ready(); return convertLegacy(Number(id), value); },
+    async wikiTemplate(value = {}) { ready(); return wikiTemplate(value); },
     async executeWorkflowAgent(snapshot, value) {
       ready(); value.signal.throwIfAborted();
       if (snapshot.id !== 'grok-agent' || !applicationToolsVerified || !Array.isArray(snapshot.allowedTools) || snapshot.allowedTools.some(name => !workflowAgentTools.includes(name))) throw agentError('TOOL_DENIED', '受限 Agent 执行器或工具未通过验证');
@@ -190,13 +203,19 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
     },
     status() { const config = executionConfig(); return { agentWorkbenchEnabled: enabled, applicationToolsVerified, engines: [{ id: 'grok-build', label: 'Grok', model: config.chat?.grokBuild?.model || 'grok-4.6', supportedVersion: '1.0.70 (f50904eaee6c)' }, ...(codexVerified ? [{ id: 'codex-cli', label: 'Codex', model: config.codexCli?.model || '', supportedVersion: '0.159.0', fileReads: 'native_full_disk' }] : []), { id: 'antigravity-acp', label: 'Antigravity', model: '', supportedVersion: '1.4.5', fileReads: 'native' }], executionBoundary: 'Grok 命令以当前用户权限运行；Codex 与 Antigravity 使用原生文件访问及审批' }; },
     async models(engine) {
-      if (engine === 'antigravity-acp') return describeAntigravity({}, { cwd: neutralCwd, signal: AbortSignal.timeout(60000) });
-      if (engine === 'grok-build') {
-        const grok = executionConfig().chat?.grokBuild || {};
-        return describeGrok({ executable: grok.executable || 'grok', model: grok.model || 'grok-4.6' }, { cwd: neutralCwd, signal: AbortSignal.timeout(30000) });
-      }
-      if (engine !== 'codex-cli' || !codexVerified) throw agentError('UNSUPPORTED_ENGINE', '引擎尚未通过验收');
-      return describeCodexWorkbench(executionConfig(), { cwd: neutralCwd, signal: AbortSignal.timeout(30000) });
+      if (closing) throw agentError('WORKBENCH_CLOSED', '工作台正在关闭', 503);
+      const promise = (async () => {
+        const signal = AbortSignal.any([modelController.signal, AbortSignal.timeout(engine === 'antigravity-acp' ? 60000 : 30000)]);
+        if (engine === 'antigravity-acp') return describeAntigravity({}, { cwd: neutralCwd, signal });
+        if (engine === 'grok-build') {
+          const grok = executionConfig().chat?.grokBuild || {};
+          return describeGrok({ executable: grok.executable || 'grok', model: grok.model || 'grok-4.6' }, { cwd: neutralCwd, signal });
+        }
+        if (engine !== 'codex-cli' || !codexVerified) throw agentError('UNSUPPORTED_ENGINE', '引擎尚未通过验收');
+        return describeCodexWorkbench(executionConfig(), { cwd: neutralCwd, signal });
+      })();
+      modelReads.add(promise);
+      try { return await promise; } finally { modelReads.delete(promise); }
     },
     async connectAntigravity() {
       ready();
@@ -212,7 +231,7 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
     async configure(value) {
       if (typeof value.agentWorkbenchEnabled !== 'boolean') throw agentError('INVALID_CONFIG', '需要工作台启用状态');
       if (!value.agentWorkbenchEnabled && (active.size || resuming.size || tasks?.hasActive())) throw agentError('ACTIVE_TURNS', '请先停止并核对工作台中的活动轮次和独立任务', 409);
-      const temp = `${configFile}.${randomUUID()}.tmp`; await writeFile(temp, JSON.stringify({ agentWorkbenchEnabled: value.agentWorkbenchEnabled })); await rename(temp, configFile);
+      const temp = `${configFile}.${randomUUID()}.tmp`; await writeFile(temp, JSON.stringify({ primaryWorkbench: true, agentWorkbenchEnabled: value.agentWorkbenchEnabled })); await rename(temp, configFile);
       enabled = value.agentWorkbenchEnabled; if (enabled) tasks?.schedule(); return this.status();
     },
     workspace(input) { ready(); return registerWorkspace(repo, dataDir, input); },
@@ -292,16 +311,25 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
       return result;
     },
     async policy(id, value) {
-      const s = repo.session(id); if (resuming.has(s.id) || active.size && [...active.values()].some(job => job.sessionId === s.id)) throw agentError('ACTIVE_TURN', '停止此轮后再修改权限', 409);
+      const s = repo.session(id);
+      const turnActive = () => resuming.has(s.id) || [...active.values()].some(job => job.sessionId === s.id);
       if (s.purpose === 'workflow' || s.data.restricted) throw agentError('TOOL_DENIED', '受限会话权限不可扩大', 403);
-      if (s.engine === 'codex-cli') throw agentError('NATIVE_POLICY', 'Codex 使用原生只读起点与原生审批，不支持 Grok 文件网关策略');
-      if (s.engine === 'antigravity-acp') throw agentError('NATIVE_POLICY', 'Antigravity 使用原生文件访问与手动审批');
+      if (['codex-cli', 'antigravity-acp'].includes(s.engine)) {
+        if (value.write !== undefined || value.readRoots !== undefined) throw agentError('NATIVE_POLICY', '原生引擎不使用文件网关策略，只能更换审批模式');
+        const mode = approvalMode(value.approvalMode ?? s.policy.approvalMode, s.engine);
+        return repo.updateApprovalMode(id, value.revision, mode);
+      }
       const mode = approvalMode(value.approvalMode ?? s.policy.approvalMode, s.engine);
+      const approvalOnly = value.approvalMode !== undefined && value.write === undefined && value.readRoots === undefined;
+      if (turnActive()) {
+        if (!approvalOnly) throw agentError('ACTIVE_TURN', '停止此轮后再修改目录或写入权限', 409);
+        return repo.updateApprovalMode(id, value.revision, mode);
+      }
       const write = value.write ?? (value.approvalMode !== undefined ? 'ask' : s.policy.write), roots = value.readRoots ?? s.policy.readRoots;
       if (!['ask', 'allow_workspace'].includes(write) || !Array.isArray(roots) || roots.length > 10) throw agentError('INVALID_POLICY', '无效的会话权限');
       const readRoots = [];
       for (const root of roots) readRoots.push(await realpath(localPath(root)));
-      if (resuming.has(s.id) || [...active.values()].some(job => job.sessionId === s.id)) throw agentError('ACTIVE_TURN', '停止此轮后再修改权限', 409);
+      if (turnActive()) throw agentError('ACTIVE_TURN', '停止此轮后再修改目录或写入权限', 409);
       return repo.updatePolicy(id, value.revision, { approvalMode: mode, write, readRoots });
     },
     async cancel(id) {
@@ -320,9 +348,9 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
       } else repo.finish(actual.id, actual.delivery === 'not_sent' ? 'cancelled' : 'unknown', { reason: '没有存活的执行连接' });
       return repo.turn(actual.id);
     },
-    async close() { closing = true; const connection = antigravityConnection; connection?.controller.abort(); const loads = [...resuming.values()]; for (const load of loads) load.controller.abort(); await Promise.allSettled([connection?.promise, ...loads.map(load => load.done), ...[...active.keys()].map(id => this.cancel(id))]); },
+    async close() { closing = true; modelController.abort(); const connection = antigravityConnection; connection?.controller.abort(); const loads = [...resuming.values()]; for (const load of loads) load.controller.abort(); await Promise.allSettled([...modelReads, connection?.promise, ...loads.map(load => load.done), ...[...active.keys()].map(id => this.cancel(id))]); },
   };
-  const convertLegacy = createLegacyConversion({ repo, chat: legacyChat, wiki, tasks, tools, workspace: () => registerWorkspace(repo, dataDir, { kind: 'scratch', trusted: true }), createSession(workspace, data) {
+  const wikiTemplate = createWikiTemplate({ repo, wiki, tasks, tools, workspace: () => registerWorkspace(repo, dataDir, { kind: 'scratch', trusted: true }), createSession(workspace, data) {
     const settings = executionConfig().chat?.grokBuild || {}, allowedTools = workflowAgentTools;
     return repo.createSession({ workspaceId: workspace.id, engine: 'grok-build', purpose: 'interactive', policy: { write: 'ask', readRoots: [] }, data: { ...data, model: settings.model || 'grok-4.6', effort: settings.effort || 'medium', restricted: true, template: 'wiki', allowedTools, applicationTools: applicationToolsVerified, toolsetHash: toolsetHash('grok-build', applicationToolsVerified, allowedTools) } });
   } });

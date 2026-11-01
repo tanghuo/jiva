@@ -148,7 +148,7 @@ export function createAgentTaskService({ repo, sessions, store, wiki, workflow, 
       if (!enabled() || closing) throw agentError('WORKBENCH_DISABLED', '工作台已停用', 409);
       sessions.session(Number(id)); return repo.publishArtifact(Number(id), await store.saveImage(bytes, { source: 'user' }));
     },
-    prepareUpload: bytes => store.saveImage(bytes, { source: 'legacy-chat' }),
+    prepareUpload: bytes => store.saveImage(bytes, { source: 'wiki-reference' }),
     publishUpload: (id, value) => repo.publishArtifact(id, value),
     async modelImage(id, sessionId) { const value = await this.content(id, sessionId); if (value.artifact.type !== 'image') throw agentError('NOT_IMAGE', '此产物不是图片'); return store.previewImage(value.bytes); },
     async promptAttachments(ids, sessionId) { const images = [], texts = []; for (const id of ids) { const value = await this.content(id, sessionId); if (value.artifact.type === 'image') images.push(await store.previewImage(value.bytes)); else texts.push(value.bytes.toString('utf8').slice(0, 64000)); } return { images, text: texts.join('\n\n') }; },

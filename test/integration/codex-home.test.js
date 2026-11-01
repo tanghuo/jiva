@@ -9,7 +9,7 @@ import { codexEnvironment, codexMcpOverrides } from "../../src/agent/executors/c
 import { parse } from "smol-toml";
 import { localCodexAuth } from "../../src/agent/executors/codexLocalAuth.js";
 
-test("Wiki chat and worker isolate the default Codex home and honor overrides", { timeout: 20000 }, async (t) => {
+test("Wiki worker isolates the default Codex home and honor overrides", { timeout: 20000 }, async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "wiki-codex-home-"));
   const previousHome = process.env.CODEX_HOME;
   const source = path.join(dir, "desktop-codex");
@@ -49,12 +49,11 @@ ${fixture}`);
   for (const home of [null, path.join(dir, "custom-codex"), null]) {
     config.executor.codexCli.codexHome = home;
     await api("organization/config", config, "PUT");
-    assert.equal((await api("chat/probe", {})).available, true);
-    assert.equal(await readFile(path.join(dir, "chat-home.txt"), "utf8"), home || defaultHome);
+    await codexEnvironment({ ...config.executor, codexCli: { ...config.executor.codexCli, codexHome: config.executor.codexCli.codexHome || defaultHome, reuseLocalAuth: !config.executor.codexCli.codexHome } });
     if (home) await assert.rejects(readFile(path.join(home, "auth.json")), { code: "ENOENT" });
     else {
-      assert.equal(await readFile(path.join(defaultHome, "skills", "fixture.txt"), "utf8"), "shared skill");
-      assert.deepEqual(await readdir(path.join(defaultHome, "plugins")), []);
+      await assert.rejects(readFile(path.join(defaultHome, "skills", "fixture.txt")), { code: "ENOENT" });
+      await assert.rejects(readdir(path.join(defaultHome, "plugins")), { code: "ENOENT" });
       assert.equal(await readFile(path.join(defaultHome, "auth.json"), "utf8"), '{"fixture":"desktop-login"}');
       assert.ok((await readFile(path.join(defaultHome, "config.toml"), "utf8")).endsWith('model = "desktop-only"'));
       await unlink(path.join(defaultHome, "auth.json")); // Worker must also be able to bootstrap authentication.
@@ -70,12 +69,11 @@ ${fixture}`);
   }
   await app.close(); app = await createServer({ port: 0, dataDir: dir });
   await writeFile(path.join(source, "config.toml"), 'model = "updated-model"');
-  assert.equal((await api("chat/probe", {})).available, true);
+  await codexEnvironment({ ...config.executor, codexCli: { ...config.executor.codexCli, codexHome: defaultHome, reuseLocalAuth: true } });
   assert.ok((await readFile(path.join(defaultHome, "config.toml"), "utf8")).endsWith('model = "updated-model"'));
   await writeFile(path.join(source, "config.toml"), 'respect_system_proxy = true');
-  await api("chat/probe", {});
+  await codexEnvironment({ ...config.executor, codexCli: { ...config.executor.codexCli, codexHome: defaultHome, reuseLocalAuth: true } });
   assert.ok((await readFile(path.join(defaultHome, "config.toml"), "utf8")).endsWith('respect_system_proxy = true'));
-  assert.equal(await readFile(path.join(dir, "chat-home.txt"), "utf8"), defaultHome);
   assert.equal(await readFile(path.join(source, "auth.json"), "utf8"), '{"fixture":"desktop-login"}');
 });
 

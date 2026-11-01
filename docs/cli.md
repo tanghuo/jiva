@@ -221,17 +221,7 @@ node src/cli/main.js sharing disable
 
 ## Wiki 会话内的 CLI
 
-内嵌会话通过 `wiki_cli` 工具传入 argv 和 stdin，由后端运行真正的 CLI 子进程。可用命令为 `schema`、`read`、`elements list/get`、`tags list`、`relations list`、`tag-relations list/members`、`organize search` 和 `chat propose`。图片 `read/get` 的 CLI JSON 仍为元数据；会话后端额外附上 800px WebP 预览供模型读取。
-
-新增的 `chat propose --input -` 从 stdin 接收以下三类建议。它需要当前会话运行中、由后端注入的临时凭据；独立终端直接调用会返回 403。
-
-```json
-{"kind":"create_text","body":"整理后的内容","tags":["笔记"],"sourceIds":[123],"reason":"依据资料 123 整理"}
-{"kind":"add_tags","elementId":123,"tags":["参考"],"sourceIds":[],"reason":"正文明确提及主题"}
-{"kind":"add_relation","sourceId":123,"targetId":456,"name":"参考来源","sourceIds":[],"reason":"两份内容有明确联系"}
-```
-
-每次提交一个 JSON 对象。涉及的资料须已在当前轮读取；返回建议只表示待用户采纳。会话不提供直接写内容、采纳、删除、导出或修改连接地址的命令。正文编辑、采纳、拒绝及条件撤销在 Wiki 面板完成，采纳与变更记录以同一数据库事务提交。
+Agent 工作台通过明确声明的应用工具读取 Wiki 和提出建议，修改等待用户采纳。旧 `chat propose` 命令和会话临时令牌已删除；独立 CLI 继续使用本机管理凭据。
 
 ## 实现边界与验证
 

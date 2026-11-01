@@ -1,11 +1,11 @@
 import { createElementRepository } from './elementRepository.js';
-import { createChatRepository } from './chatRepository.js';
+import { createWikiSnapshots } from './wikiSnapshots.js';
 import { agentError } from '../../shared/domain/agentWorkbench/contracts.js';
 import { elementContent, elementTags } from '../../shared/domain/elements.js';
 import { randomUUID } from 'node:crypto';
 
 export function createAgentWikiRepository(db) {
-  const wiki = createElementRepository(db), versions = createChatRepository(db);
+  const wiki = createElementRepository(db), versions = createWikiSnapshots(db);
   function atomic(fn) { if (db.isTransaction) return fn(); db.exec('BEGIN IMMEDIATE'); try { const result = fn(); db.exec('COMMIT'); return result; } catch (error) { db.exec('ROLLBACK'); throw error; } }
   function proposal(id, sessionId) {
     const row = db.prepare('SELECT * FROM agent_wiki_proposals WHERE id=? AND session_id=?').get(id, sessionId);

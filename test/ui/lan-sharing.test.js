@@ -71,6 +71,7 @@ test("LAN sharing persists configuration, requires pairing, keeps local-only fea
   assert.match(await home.text(), /name="wiki-access" content="lan-edit"/);
   assert.equal(home.headers.get("content-security-policy"), "frame-ancestors 'none'");
   assert.equal((await get("/brand/self-wiki-64.png")).status, 200);
+  assert.equal((await get("/brand/self-wiki-small.svg")).status, 200);
   assert.equal((await (await get("/api/elements?q=第一行")).json()).elements[0].id, note.id);
   assert.deepEqual((await (await get("/api/tags")).json()).tags, ["共享", "隐藏标签"]);
   assert.equal((await (await get(`/api/elements/${note.id}/relations`)).json()).relations.length, 1);

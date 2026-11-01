@@ -11,7 +11,7 @@ export default function AgentSourcePreview({ id, onClose, onBrowse, onReference,
   const [menu, setMenu] = useState(null), [notice, setNotice] = useState(""), [error, setError] = useState("");
   const current = stack.at(-1);
   function back() { if (stack.length > 1) setStack((p) => p.slice(0, -1)); else onClose(); }
-  return <DialogFrame bare label="资料预览" className="wiki-dialog agent-source-preview" onClose={() => { if (!busy) onClose(); }} title={<><BookOpen size={18} />资料预览</>} closeLabel="关闭资料预览" busy={busy} footer={<><span className="wiki-muted">查看来源后，继续当前对话。</span><SourceReference id={current.id} onReference={onReference} disabled={busy} showButton /><button disabled={busy} onClick={() => onBrowse(current.id, stack.at(-2)?.id)}>在内容库打开</button></>}>
+  return <DialogFrame bare label="资料预览" className="wiki-dialog agent-source-preview" onClose={() => { if (!busy) onClose(); }} title={<><BookOpen size={18} />资料预览</>} closeLabel="关闭资料预览" busy={busy} footer={<><span className="wiki-muted">可将来源放进资料篮，在工作台提问。</span><SourceReference id={current.id} onReference={onReference} disabled={busy} showButton /><button disabled={busy} onClick={() => onBrowse(current.id, stack.at(-2)?.id)}>在内容库打开</button></>}>
     <div className="agent-source-body">
       {notice && <p role="status">{notice}</p>}{error && <p className="wiki-error" role="alert">{error}</p>}
       <ElementDetail key={`${stack.length}:${current.id}`} id={current.id} readOnly relationPage={current.page}

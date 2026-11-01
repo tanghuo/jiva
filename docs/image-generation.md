@@ -1,5 +1,7 @@
 # 聊天生图方式
 
+> 历史文档：旧 Agent 对话及其会话生图、分支、调用记录接口已于 2026-10-31 移除。当前使用请参阅 [Agent 工作台](agent-workbench-usage.md) 与 [工作流](workflows.md)；底层生图执行器仍供工作流使用。
+
 会话输入框旁可选择 **Codex CLI**、**ChatGPT 网页版**、**ComfyUI**或 **Grok Build**，每个会话独立保存。新会话沿用最近选择。设置 → Agent 与检索只管理服务连接；ComfyUI 默认地址为 `http://127.0.0.1:8188`。进行中的请求使用提交时的快照。
 
 ## 配置 Grok Build

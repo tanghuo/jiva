@@ -4,7 +4,7 @@ import { DialogFrame } from "./ui/ConfirmDialog.jsx";
 import useWikiResource from "./useWikiResource.js";
 import "./tokenUsage.css";
 
-const purposes = { chat: "Agent 对话", organization: "自动整理", "image-description": "图片描述", "embedding-index": "建立向量索引", "embedding-search": "向量检索", "embedding-probe": "向量连接检测" };
+const purposes = { chat: "旧对话", organization: "自动整理", "image-description": "图片描述", "embedding-index": "建立向量索引", "embedding-search": "向量检索", "embedding-probe": "向量连接检测" };
 const states = { running: "进行中", completed: "完成", failed: "失败", interrupted: "中断" };
 const number = (n) => n == null ? "—" : n.toLocaleString();
 const uncached = (r) => r.input != null && r.cached != null && r.cached <= r.input ? r.input - r.cached : null;

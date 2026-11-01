@@ -15,7 +15,7 @@ test("a committed duplicate import still succeeds when removing the redundant co
   t.after(async () => { db.close(); await rm(dir, { recursive: true, force: true }); });
   const store = createImageStore(path.join(dir, "assets"));
   const failing = { ...store, remove: async () => { throw Object.assign(new Error("EBUSY: file in use"), { code: "EBUSY" }); } };
-  const wiki = createElementService(createElementRepository(db), failing, async () => {});
+  const wiki = createElementService(createElementRepository(db), failing);
   const bytes = await sharp({ create: { width: 8, height: 8, channels: 3, background: "red" } }).png().toBuffer();
   const first = await wiki.importImage(bytes, "a.png", ["一"]);
   const errors = t.mock.method(console, "error", () => {});

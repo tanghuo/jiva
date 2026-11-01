@@ -5,7 +5,7 @@ import { migrateWiki } from "../../src/server/data/wikiMigrations.js";
 import { createElementRepository } from "../../src/server/data/elementRepository.js";
 import { createElementService } from "../../src/server/application/elementService.js";
 import { createOrganizationRepository } from "../../src/server/data/organizationRepository.js";
-import { createChatRepository } from "../../src/server/data/chatRepository.js";
+import { createWikiSnapshots } from "../../src/server/data/wikiSnapshots.js";
 import { organizationOutput } from "../../src/shared/domain/organization.js";
 
 function setup(t) {
@@ -191,7 +191,7 @@ test("AI additions retain raw alias bindings and reversed endpoint direction thr
   assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
 });
 
-test("alias changes invalidate in-flight AI contexts and chat snapshots, while ordinary text edits retain AI tag bindings", (t) => {
+test("alias changes invalidate in-flight AI contexts and Wiki snapshots, while ordinary text edits retain AI tag bindings", (t) => {
   const { db, wiki, org, note, tagAlias, relationAlias } = setup(t), source = note("正文资料"), target = note("目标");
   const result = organize(org, source, ["旧标签"]);
   const alias = tagAlias("旧标签", "主标签");
@@ -202,21 +202,9 @@ test("alias changes invalidate in-flight AI contexts and chat snapshots, while o
   wiki.removeAlias("tag", alias.id);
   assert.throws(() => org.context(job.id, job.leaseToken), /资料库已变化/);
   wiki.relate(source.id, target.id, "related", "former");
-  const chat = createChatRepository(db), snapshot = chat.snapshot(source.id);
+  const chat = createWikiSnapshots(db), snapshot = chat.snapshot(source.id);
   relationAlias("former", "current");
   assert.throws(() => chat.unchanged([snapshot]), /已有修改/);
-});
-
-test("chat accepting alias duplicates never acquires ownership of pre-existing tags or relations", (t) => {
-  const { db, wiki, note, relationAlias } = setup(t), source = note("资料", ["prompt"]), target = note("目标");
-  const old = wiki.relate(source.id, target.id, "related", "prompt"); relationAlias("prompt", "提示词");
-  const chat = createChatRepository(db), session = chat.create(), turn = chat.begin(session.id, { text: "整理", requestKey: "vocabulary-request", sourceIds: [] }).turn;
-  const tag = chat.propose(turn.id, "vocabulary-tags", { kind: "add_tags", elementId: source.id, tags: ["prompts"], sourceIds: [], reason: "同义" }, [chat.snapshot(source.id)]);
-  assert.deepEqual(chat.accept(tag.id).changes.addedTags, []); chat.undo(tag.id);
-  assert.deepEqual(wiki.get(source.id).tags, ["提示词"]);
-  const relation = chat.propose(turn.id, "vocabulary-relations", { kind: "add_relation", sourceId: source.id, targetId: target.id, name: "提示词", direction: "symmetric", reverseName: "", sourceIds: [], reason: "同义" }, [chat.snapshot(source.id), chat.snapshot(target.id)]);
-  assert.deepEqual(chat.accept(relation.id).changes.relationIds, []); chat.undo(relation.id);
-  assert.equal(wiki.relations(source.id).relations[0].id, old.id);
 });
 
 test("restricted tag suggestions and members apply visibility after resolving aliases", (t) => {

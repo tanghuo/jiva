@@ -185,7 +185,7 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
     else throw httpError(405, "Method not allowed");
     return true;
   }
-  const match = route.match(/^\/api\/elements\/([^/]+)(?:\/(relations|tag-relations|restore|image|video|thumbnail|download|lifecycle|conversation|usage))?$/);
+  const match = route.match(/^\/api\/elements\/([^/]+)(?:\/(relations|tag-relations|restore|image|video|thumbnail|download|lifecycle|usage))?$/);
   if (!match) return false;
   const id = elementId(match[1]);
   const action = match[2];
@@ -210,7 +210,6 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
     });
     res.end(result.bytes);
   } else if (action === "lifecycle" && method === "GET") json(res, 200, wiki.lifecycle(id));
-  else if (action === "conversation" && method === "GET") json(res, 200, wiki.conversation(id, url.searchParams.has("from") ? elementId(url.searchParams.get("from")) : undefined));
   else if (action === "thumbnail" && method === "GET") {
     const trash = url.searchParams.get("scope") === "trash";
     if (trash && !allowTrashPreview) throw httpError(404, "Not found");

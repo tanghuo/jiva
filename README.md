@@ -68,9 +68,9 @@ node src/server/server.js --port 8765 --data-dir "D:\wiki-data" --open
 
 | 能力 | 设置入口 | 依赖与说明 |
 | --- | --- | --- |
-| Agent 对话 | Agent 连接 | 可选本机 Codex 或 Grok Build 聊天引擎，安装并登录对应 CLI 后保存和检测；详见[聊天引擎](docs/chat-engines.md) |
+| Agent 工作台 | 侧栏 Agent 工作台；设置 → Agent 连接 | 默认启用，可在会话选择 Grok、Codex、Antigravity；详见[工作台指南](docs/agent-workbench-usage.md) |
 | 自动整理 | 自动整理与检索 | 复用 Agent 执行器，可选择“先生成建议”或“自动添加” |
-| 聊天生图 | 会话输入框旁；服务连接在自动整理与检索 | 支持 Codex CLI、ChatGPT 网页版、ComfyUI、Grok Build；Grok 聊天可在原会话连续改图，详见 [生图配置](docs/image-generation.md) |
+| 生图任务 | Agent 工作台或工作流；服务连接在自动整理与检索 | 由工作台批准独立图片任务，或通过工作流使用已配置的图片执行器；详见 [生图配置](docs/image-generation.md) |
 | 语义检索 | 自动整理与检索 → 模型、超时与语义检索 | 需兼容 embeddings 的服务，默认连接本机 Ollama |
 | 视频分析 | 视频与画面检索 | 需 FFmpeg、ffprobe 和可用的 Codex 视觉执行器；可手动开始或后台自动分析 |
 | 视觉相似检索 | 视频与画面检索 | 需单独运行本地 SigLIP2 编码服务，默认地址 `http://127.0.0.1:8767` |
@@ -212,10 +212,10 @@ node tools/smoke-desktop.mjs --packaged
 - [使用与配置指南](docs/usage.md)：浏览、保存、关联、画布、Agent、整理、检索与共享的完整说明。
 - [CLI 使用指南](docs/cli.md)：命令、参数、分页、错误与重试规则。
 - [聊天生图配置](docs/image-generation.md)：Codex CLI、ChatGPT 网页版、ComfyUI 与 Grok Build。
-- [聊天引擎](docs/chat-engines.md)：Codex / Grok Build、会话恢复与连续生图改图。
+- [工作台引擎](docs/chat-engines.md)：Grok、Codex、Antigravity 的连接与会话。
 - [视频分析与相似素材设计](docs/video-auto-annotation-design.md)、[视频首帧整理](docs/video-first-frame-organization.md)。
 - [语义检索设计](docs/semantic-retrieval-design.md)、[搜索相关性](docs/search-relevance.md)。
-- [会话实现](docs/wiki-chat-design.md)、[调用记录](docs/chat-call-records.md)、[Token 用量](docs/token-usage.md)。
+- [工作台使用](docs/agent-workbench-usage.md)、[Token 用量](docs/token-usage.md)。
 - [元素生命周期](docs/element-lifecycle-design.md)、[关联方向](docs/relation-directions-design.md)、[名称归一](docs/vocabulary-design.md)。
 
 设计文档包含历史方案与验证边界；日常使用以当前界面、项目首页和使用指南为准。

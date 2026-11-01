@@ -112,7 +112,7 @@ export default function ReferenceTray({ elements, collapsed, onCollapse, onRemov
       </button>
     </header>
     <div id="reference-tray-content" hidden={collapsed}>
-      <p className="reference-tray-hint">选好资料后点「问 Agent」开始对话；也可拖入下方输入框。</p>
+      <p className="reference-tray-hint">选好资料后点「问 Agent」，在工作台输入问题并发送。</p>
       <ul className="reference-tray-list">{elements.map((element) => {
         const label = element.label || elementLabel(element);
         return <li key={element.id}>

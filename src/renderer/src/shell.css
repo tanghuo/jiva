@@ -1,7 +1,7 @@
-/* App shell: one sidebar (Agent 对话 · 我的内容 · 工具 · bottom 回收站 / 设置) and one page skeleton. */
+/* App shell: one sidebar (Agent 工作台 · 我的内容 · 工具 · bottom 回收站 / 设置) and one page skeleton. */
 :root { --sidebar-w: 208px; }
 @media (max-width: 1050px) { :root { --sidebar-w: 184px; } }
-.wiki-shell, .app-layout.agent-home { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
+.wiki-shell { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
 .wiki-sidebar { position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; height: 100dvh; padding: 20px var(--sp-3) var(--sp-4); overflow-y: auto; border-right: 1px solid var(--sidebar-line); background: var(--sidebar); }
 .workspace-brand { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) var(--sp-2) var(--sp-4); color: var(--ink); }
 .workspace-brand strong { font-size: var(--fs-section); font-weight: 600; letter-spacing: -.01em; }
@@ -33,7 +33,6 @@
 
 @media (max-width: 720px) {
   .wiki-shell { display: block; }
-  .app-layout.agent-home { display: flex; flex-direction: column; }
   .wiki-sidebar { position: static; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--sp-1); height: auto; padding: var(--sp-3) var(--sp-4); overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
   .workspace-brand { flex: 1 1 auto; padding: 0; }
   .wiki-sidebar > .wiki-utilities-toggle { display: inline-flex; }

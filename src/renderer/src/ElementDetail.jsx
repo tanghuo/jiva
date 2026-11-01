@@ -5,7 +5,6 @@ import { recordElementUsage } from "./elementUsage.js";
 import useWikiResource from "./useWikiResource.js";
 import ElementCard from "./ElementCard.jsx";
 import { elementLabel, elementKindLabels, relationLabel } from "../../shared/domain/elements.js";
-import SessionPreview from "./SessionPreview.jsx";
 import ElementEditor from "./ElementEditor.jsx";
 import RelationPicker from "./RelationPicker.jsx";
 import RelationRenameDialog from "./RelationRenameDialog.jsx";
@@ -157,7 +156,7 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
           {element.kind === "image" ? <div className="wiki-detail-image-stage"><DetailImage key={`${id}:${element.image.url}:${imageAttempt}`} src={apiUrl(`${element.image.url}?attempt=${imageAttempt}`)} alt={elementLabel(element)} inert={navigation?.switching || undefined}
             onContextMenu={(event) => { if (!busy && !externalBusy) onContentContextMenu?.(event, element); }}
             onLoad={() => { setImageReady(true); setImageFailed(false); }} onError={() => { setImageReady(true); setImageFailed(true); }} />{adjacentNavigation}</div>
-            : element.kind === "video" ? <VideoDetailBlocks id={id} element={element} videoPlayer={videoPlayer} revision={revision} externalRevision={externalRevision} refresh={refresh} setSeekPosition={setSeekPosition} setVisualFrameRequest={setVisualFrameRequest} visualMatchesRef={visualMatches} seekPosition={seekPosition} markerId={markerId} onOpen={onOpen} setBusy={setBusy} externalBusy={externalBusy} readOnly={readOnly} /> : element.kind === "session" ? <SessionPreview element={element} contextId={contextId} /> : <div className="wiki-text-document">
+            : element.kind === "video" ? <VideoDetailBlocks id={id} element={element} videoPlayer={videoPlayer} revision={revision} externalRevision={externalRevision} refresh={refresh} setSeekPosition={setSeekPosition} setVisualFrameRequest={setVisualFrameRequest} visualMatchesRef={visualMatches} seekPosition={seekPosition} markerId={markerId} onOpen={onOpen} setBusy={setBusy} externalBusy={externalBusy} readOnly={readOnly} /> : <div className="wiki-text-document">
               <div className="wiki-text-actions"><button className="text-button" onClick={copy}><Copy size={15} />复制文字</button></div>
               {element.body ? <pre>{element.body}</pre> : <p className="wiki-muted">{readOnly ? "暂无正文" : "可以关联图片或文字。"}</p>}
             </div>}

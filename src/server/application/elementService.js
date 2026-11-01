@@ -5,7 +5,7 @@ import { canvasPositions } from "../../shared/domain/canvas.js";
 import { vocabularyAlias, vocabularyKind } from "../../shared/domain/vocabulary.js";
 import { videoMarkerInput, markerRevision } from "../../shared/domain/videoMarkers.js";
 
-export function createElementService(repo, imageStore, cleanupHistory, videoStore) {
+export function createElementService(repo, imageStore, videoStore) {
   let warming, stopWarming = false;
   let importing = 0;
   let importingVideos = 0;
@@ -64,7 +64,6 @@ export function createElementService(repo, imageStore, cleanupHistory, videoStor
       return repo.usage({ from, to, sort });
     },
     lifecycle: (id) => repo.lifecycle(id),
-    conversation: (id, from) => repo.conversation(id, from),
     markers: (id, query) => repo.markers.list(id, query),
     marker: (id) => repo.markers.get(id),
     createMarker: (id, payload) => repo.markers.create(id, videoMarkerInput(payload)),
@@ -97,8 +96,7 @@ export function createElementService(repo, imageStore, cleanupHistory, videoStor
           catch { cleanupFailed.push(id); }
         }
       }
-      const historyCleanupFailed = await cleanupHistory?.();
-      return { deleted, failed, cleanupFailed, ...(historyCleanupFailed?.length ? { historyCleanupFailed } : {}) };
+      return { deleted, failed, cleanupFailed };
     },
     relate: (a, b, type, name, semantics = {}) => repo.relate(a, b, type, name, relationSemantics({ ...semantics, name })),
     relateBatch: (payload) => repo.relateBatch(relationBatch(payload)),

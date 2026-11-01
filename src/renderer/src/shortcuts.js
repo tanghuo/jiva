@@ -24,7 +24,7 @@ export const shortcutGroups = [
     [[modKey, "V"], "粘贴图片或视频，加入待保存内容"],
     [["Esc"], "在搜索框中清空关键词"],
   ] },
-  { title: "Agent 对话", items: [
+  { title: "Agent 工作台", items: [
     [["Enter"], "发送消息"],
     [["Shift", "Enter"], "换行"],
   ] },

@@ -97,10 +97,19 @@ export async function openGrokWorkbench(settings, { cwd, neutralCwd, sessionId, 
     const response = await client.request(sessionId ? 'session/load' : 'session/new', { ...(sessionId && { sessionId }), cwd, mcpServers: [], _meta: meta }, 60000);
     thread = sessionId || response.sessionId;
     const verification = await verifyGrokWorkbenchProfile({ cwd, sessionId: thread, profile, explicitlySelected: true });
-    async function verifyTools() {
+    async function verifyTools(phase = 'connect') {
       const response = await client.request('_x.ai/mcp/list', { sessionId: thread }, 10000);
       const catalog = response.result || response;
-      const verified = verifyWorkbenchMcpCatalog(catalog, sdk?.definition);
+      let verified;
+      try { verified = verifyWorkbenchMcpCatalog(catalog, sdk?.definition); }
+      catch (error) {
+        if (error.mcpDiagnostics) await onEvent('engine.extension', {
+          namespace: 'grok', type: 'mcp.verification_failed', phase,
+          sessionId: thread, sessionOperation: sessionId ? 'load' : 'new', version,
+          sdkInitialized: sdk?.initialized ?? false, diagnostics: error.mcpDiagnostics,
+        });
+        throw error;
+      }
       if (sdk && !sdk.initialized) throw new Error('工作台应用工具握手尚未完成');
       return verified;
     }
@@ -131,7 +140,7 @@ export async function openGrokWorkbench(settings, { cwd, neutralCwd, sessionId, 
         const release = await acquireExternalResource('grok', signal);
         try {
           await onEvent('resource.acquired', {});
-          signal?.throwIfAborted(); await verifyTools(); prompting = true; sdk?.begin({ sessionId: thread, turnId: randomUUID() }); onDelivery('attempted');
+          signal?.throwIfAborted(); await verifyTools('before_prompt'); prompting = true; sdk?.begin({ sessionId: thread, turnId: randomUUID() }); onDelivery('attempted');
           const result = await client.request('session/prompt', { sessionId: thread, prompt: [{ type: 'text', text }, ...images] }, 30 * 60 * 1000);
           if (restricted && !applicationTools) await verifyGrokWorkbenchProfile({ cwd, sessionId: thread, profile, explicitlySelected: true, requireEmptyTools: true });
           return result;

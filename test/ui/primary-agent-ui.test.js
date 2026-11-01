@@ -1,0 +1,62 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createServer, chromium, fetch } from '../helpers/authenticatedServer.js';
+import { resolveBrowserPath } from '../resolveBrowserPath.js';
+import { stubWorkbenchModels } from '../helpers/workbenchModels.js';
+
+const executablePath = resolveBrowserPath();
+test('primary Agent navigation and reference basket open a workbench draft, explicitly send, and keep old IDs out', { timeout: 40000, skip: !executablePath }, async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-primary-agent-ui-'));
+  let app, browser;
+  t.after(async () => {
+    await browser?.close(); await app?.close();
+    assert.equal(path.dirname(dir), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(dir).startsWith('wiki-primary-agent-ui-'));
+    await rm(dir, { recursive: true, force: true });
+  });
+  const prompts = [];
+  app = await createServer({ port: 0, dataDir: dir, async openWorkbenchEngine(_settings, callbacks) {
+    return { sessionId: 'fixture', version: 'fixture', capabilities: {}, cancel() {}, async close() {}, async prompt(text, delivery) {
+      prompts.push(text); delivery('attempted'); await callbacks.onEvent('message.delta', { text: '引用资料完成回答。' }); return {};
+    } };
+  } });
+  const source = await (await fetch(new URL('api/elements', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: '正文：需要带入工作台的资料', tags: [] }) })).json();
+  browser = await chromium.launch({ executablePath, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 960 } }); page.setDefaultTimeout(10000);
+  await stubWorkbenchModels(page);
+  const errors = [], legacyRequests = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => { if (request.url().includes('/api/chat/')) legacyRequests.push(request.url()); });
+  await page.addInitScript(() => { localStorage.setItem('wikiChatDraft:old', '{"text":"旧草稿"}'); });
+  await page.goto(app.url + '#wiki');
+  const sidebar = page.getByRole('complementary', { name: '内容导航' });
+  assert.equal(await sidebar.getByRole('link', { name: 'Agent 工作台', exact: true }).count(), 1);
+  assert.equal(await sidebar.getByRole('link', { name: 'Agent 对话', exact: true }).count(), 0);
+  assert.equal(await page.evaluate(() => localStorage.getItem('wikiChatDraft:old')), null);
+  await sidebar.getByRole('link', { name: 'Agent 工作台', exact: true }).click();
+  await page.getByLabel('任务内容').waitFor();
+  assert.equal(await page.getByRole('button', { name: '启用工作台', exact: true }).count(), 0);
+  await sidebar.getByRole('button', { name: '全部内容', exact: true }).click();
+  await page.getByRole('button', { name: /^打开内容：正文/ }).click();
+  await page.getByRole('button', { name: '放进资料篮', exact: true }).click();
+  await page.getByRole('button', { name: '带着资料问 Agent', exact: true }).click();
+  await page.waitForURL(url => url.hash.startsWith('#workbench?session='));
+  await page.getByLabel('任务内容').waitFor();
+  assert.equal(prompts.length, 0);
+  const id = new URLSearchParams(page.url().split('?')[1]).get('session');
+  const detail = await (await fetch(new URL('api/agent/sessions/' + id, app.url))).json();
+  assert.match(detail.session.data.initialContext, new RegExp('wiki:' + source.id));
+  await page.getByLabel('任务内容').fill('根据所选资料回答');
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  await page.getByText('引用资料完成回答。', { exact: true }).waitFor();
+  assert.equal(prompts.length, 1);
+  assert.match(prompts[0], /需要带入工作台的资料/);
+  await page.goto(app.url + '#agent?session=99999');
+  await page.getByLabel('任务内容').waitFor();
+  assert.equal(await page.getByText('准备好了', { exact: true }).count(), 0);
+  assert.deepEqual(legacyRequests, []); assert.deepEqual(errors, []);
+  await page.screenshot({ path: path.join(dir, 'primary-agent.png') });
+});

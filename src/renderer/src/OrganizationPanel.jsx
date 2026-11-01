@@ -4,7 +4,7 @@ import { request } from "./api.js";
 import OrganizationHistory from "./OrganizationHistory.jsx";
 import SemanticSettings from "./SemanticSettings.jsx";
 import ImageGenerationSettings from "./ImageGenerationSettings.jsx";
-import ChatEngineSettings from "./ChatEngineSettings.jsx";
+import WorkbenchConnectionSettings from "./WorkbenchConnectionSettings.jsx";
 import { Button } from "./ui/Button.jsx";
 
 const labels = { queued: "待整理", running: "整理中", succeeded: "整理完成", failed: "整理失败", cancelled: "已取消" };
@@ -92,16 +92,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
     if (busy || disabled) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const result = await request("/api/chat/image-generation/probe", { method: "POST", body: JSON.stringify({ executor }) });
-      if (result.available) setMessage(result.message); else setError(result.message);
-    } catch (failure) { setError(failure.message); }
-    finally { setBusy(false); }
-  }
-  async function probeChat() {
-    if (busy || disabled) return;
-    setBusy(true); setError(""); setMessage("");
-    try {
-      const result = await request("/api/chat/probe", { method: "POST", body: "{}" });
+      const result = await request("/api/organization/images/probe", { method: "POST", body: JSON.stringify({ executor }) });
       if (result.available) setMessage(result.message); else setError(result.message);
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
@@ -118,8 +109,8 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
       {settings && config && <div className="wiki-form-fields">
         {(focus === "all" || focus === "connection") && <>
         {focus === "connection" && <header className="settings-section-header"><h3>Agent 连接</h3></header>}
-                <ChatEngineSettings value={config.chat} locked={locked} onChange={(chat) => setConfig((current) => ({ ...current, chat }))} />
-        <button type="button" disabled={locked || dirty} title={dirty ? "先保存改动，再检测连接" : undefined} onClick={probeChat}>检测聊天连接</button>
+                <WorkbenchConnectionSettings value={config.chat} locked={locked} onChange={(chat) => setConfig((current) => ({ ...current, chat }))} />
+        <a className="button" href="#workbench" onClick={() => window.dispatchEvent(new Event("self-wiki-close-settings"))}>打开工作台检测连接</a>
         <div className="wiki-actions"><button disabled={locked} onClick={() => mutate("probe")}>检测并启动整理程序</button></div>
         <fieldset className="settings-group"><legend>连接参数</legend>
         {focus === "connection" && executorSelect}

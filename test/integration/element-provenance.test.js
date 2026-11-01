@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { initDb } from "../../src/server/data/sqlite.js";
+import { DatabaseSync } from 'node:sqlite';
+import { wikiMigrations } from '../../src/server/data/wikiMigrations.js';
+function initDb() { const db = new DatabaseSync(':memory:'); db.exec('PRAGMA foreign_keys=ON'); for (const step of wikiMigrations) if (!step.versions.includes(46)) step.run(db); return db; }
 import { createElementRepository } from "../../src/server/data/elementRepository.js";
-import { createChatRepository } from "../../src/server/data/chatRepository.js";
 import { migrateElementCreationSource } from "../../src/server/data/elementCreationSourceMigration.js";
 import { migrateChatReferences } from "../../src/server/data/chatReferenceMigration.js";
 import { relationLabel } from "../../src/shared/domain/elements.js";
@@ -18,9 +19,7 @@ test("image reuse preserves its original entry route, independently of output bi
     const generatedFile = { ...file, storageKey: "chat.png", contentHash: "b".repeat(64) };
     const generated = wiki.importImage({ tags: [], creationSource: "chat" }, generatedFile).element;
     assert.equal(wiki.importImage({ tags: [], creationSource: "manual" }, generatedFile).element.creationSource, "chat");
-    const chat = createChatRepository(db), session = chat.create();
-    const turn = chat.begin(session.id, { text: "保存图片", sourceIds: [], requestKey: "reuse-evidence" }).turn;
-    db.prepare("INSERT INTO chat_element_bindings(turn_id,output_key,element_id) VALUES(?,?,?)").run(turn.id, "image:manual.png", manual.id);
+    db.prepare("INSERT INTO chat_element_bindings(turn_id,output_key,element_id) VALUES(1,'image:manual.png',?)").run(manual.id);
     db.exec("ALTER TABLE elements DROP COLUMN creation_source; DELETE FROM wiki_schema WHERE version=24");
     migrateElementCreationSource(db); migrateElementCreationSource(db);
     assert.equal(wiki.get(manual.id).creationSource, "unknown", "A binding cannot prove whether a legacy image was first imported");
@@ -31,7 +30,7 @@ test("image reuse preserves its original entry route, independently of output bi
 test("archive reference repair preserves receipt ids, directions, annotations and retry safety", () => {
   const db = initDb(":memory:");
   try {
-    const wiki = createElementRepository(db), chat = createChatRepository(db);
+    const wiki = createElementRepository(db);
     // Deliberately create output first: numeric order is unrelated to authorship.
     const output = wiki.createText({ body: "已保存的提示词", tags: [] });
     const source = wiki.createText({ body: "手动添加的参考", tags: [] });
@@ -42,7 +41,8 @@ test("archive reference repair preserves receipt ids, directions, annotations an
     const annotation = wiki.relate(output.id, manual.id, "related", "参考来源");
     const unproven = wiki.relate(output.id, unknown.id, "related", "参考来源");
     for (const edge of [legacy, duplicate, unproven]) db.prepare("INSERT INTO element_provenance VALUES(?)").run(edge.id);
-    const session = chat.create(), turn = chat.begin(session.id, { text: "保存结果", sourceIds: [], requestKey: "legacy-reference" }).turn;
+    db.exec("INSERT INTO chat_sessions(id,title,created_at,updated_at) VALUES(1,'旧会话',0,0); INSERT INTO chat_turns(id,session_id,request_key,payload_hash,text,created_at,updated_at) VALUES(1,1,'fixture','hash','保存结果',0,0)");
+    const turn = { id: 1 };
     db.prepare(`INSERT INTO chat_proposals(turn_id,request_key,payload,snapshots,state,changes,after_snapshots,created_at)
       VALUES(?,'legacy',?,'[]',1,?,'[]',0)`).run(turn.id,
       JSON.stringify({ kind: "create_text", sourceIds: [source.id] }), JSON.stringify({ createdId: output.id, relationIds: [legacy.id], addedTags: [] }));

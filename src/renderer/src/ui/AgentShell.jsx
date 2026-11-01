@@ -1,4 +1,4 @@
-// The one skeleton every Agent surface uses (Agent 对话, Agent 工作台, AionUi):
+// The one skeleton every Agent surface uses (Agent 工作台, AionUi):
 // left = session list (the only place to switch sessions), centre = timeline, right = preview /
 // resource panel, always present. Pages fill the slots; the columns never rearrange by content.
 // On phones (≤900px) the resource column folds away; `resourcesOpen` brings it back as a sheet over the timeline.

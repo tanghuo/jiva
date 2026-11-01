@@ -4,6 +4,8 @@ import { resolveCodexCommand } from "./codexCommand.js";
 import { codexEnvironment, codexMcpOverrides } from "./codexEnvironment.js";
 import { localCodexAuth, rejectLocalCodexAuth, codexAuthError, isCodexAuthError } from "./codexLocalAuth.js";
 import { imageExecutorDefinition } from "../../shared/domain/imageGeneration.js";
+import { invalidateQuota } from './quotaEvents.js';
+import { terminateProcessTree } from './processTree.js';
 
 // Chat sessions run with approvalPolicy "never", so shell access is opt-in:
 // without codexCli.allowShell the agent works only through Wiki tools.
@@ -19,7 +21,7 @@ export function chatFeatureArgs(config) {
   return args;
 }
 
-export async function startCodexAppServer(config, { cwd, onNotification, onToolCall, onRequest, onExit, configurationOnly = false, restricted = false, workbench = false, configOverrides = [], signal }) {
+export async function startCodexAppServer(config, { cwd, onNotification = () => {}, onToolCall, onRequest, onExit = () => {}, configurationOnly = false, restricted = false, workbench = false, quotaOnly = false, configOverrides = [], signal }) {
   signal?.throwIfAborted();
   const command = await resolveCodexCommand(config);
   const env = await codexEnvironment(config, { shareCapabilities: !configurationOnly && !restricted && !workbench });
@@ -35,10 +37,10 @@ export async function startCodexAppServer(config, { cwd, onNotification, onToolC
     for (const feature of ['code_mode_host', 'shell_tool', 'unified_exec']) args.push('--enable', feature);
   } else if (!configurationOnly) args.push(...chatFeatureArgs(config));
   for (const override of configOverrides) args.push('-c', override);
-  const child = spawn(command.executable, args, { cwd, shell: false, windowsHide: true,
+  const child = spawn(command.executable, args, { cwd, shell: false, windowsHide: true, ...(quotaOnly && {detached:process.platform !== 'win32'}),
     env, stdio: ["pipe", "pipe", "pipe"] });
   const decoder = new StringDecoder("utf8"), pending = new Map();
-  let sequence = 0, buffer = "", ended = false, closing = false, closePromise;
+  let sequence = 0, buffer = "", ended = false, closing = false, closePromise, quotaBytes = 0;
   let notifications = Promise.resolve();
   const exited = new Promise((resolve) => child.once("close", resolve));
   function write(value) { if (!ended && !child.stdin.destroyed) child.stdin.write(`${JSON.stringify(value)}\n`); }
@@ -49,7 +51,7 @@ export async function startCodexAppServer(config, { cwd, onNotification, onToolC
     pending.clear();
     if (!closing) onExit(error);
   }
-  function request(method, params = {}, timeout = 20000) {
+  function request(method, params = {}, timeout = quotaOnly ? 10000 : 20000) {
     if (ended) return Promise.reject(new Error("Codex 会话进程已停止"));
     return new Promise((resolve, reject) => {
       const id = ++sequence;
@@ -60,6 +62,7 @@ export async function startCodexAppServer(config, { cwd, onNotification, onToolC
   function message(value) {
     if (value.method && value.id !== undefined) {
       if (value.method === "account/chatgptAuthTokens/refresh" && auth) {
+        if (quotaOnly) { write({ id: value.id, error: { code: -32001, message: 'Quota reads do not refresh credentials' } }); return; }
         void (async () => {
           try {
             const next = await localCodexAuth(config);
@@ -87,20 +90,23 @@ export async function startCodexAppServer(config, { cwd, onNotification, onToolC
       const current = pending.get(value.id); if (!current) return;
       pending.delete(value.id); clearTimeout(current.timer);
       if (value.error) {
-        if (isCodexAuthError(value.error.message)) { rejectLocalCodexAuth(auth); current.reject(codexAuthError()); }
-        else current.reject(new Error(String(value.error.message || "Codex 请求失败").slice(0, 1000)));
+        if (isCodexAuthError(value.error.message)) { if (!quotaOnly) rejectLocalCodexAuth(auth); current.reject(codexAuthError()); }
+        else current.reject(Object.assign(new Error(String(value.error.message || "Codex 请求失败").slice(0, 1000)), { code: value.error.code }));
       } else current.resolve(value.result);
     } else if (value.method) {
+      if (!quotaOnly && ['account/rateLimits/updated', 'turn/completed'].includes(value.method)) invalidateQuota('codex', config);
+      if (value.method === 'account/rateLimits/updated') return;
       if ((value.method === "error" && !value.params?.willRetry && isCodexAuthError(value.params?.error?.message)) ||
           (value.method === "turn/completed" && isCodexAuthError(value.params?.turn?.error?.message))) {
-        rejectLocalCodexAuth(auth); fail(codexAuthError()); void close(); return;
+        if (!quotaOnly) rejectLocalCodexAuth(auth); fail(codexAuthError()); void close(); return;
       }
       notifications = notifications.then(() => onNotification(value.method, value.params || {})).catch((error) => fail(error));
     }
   }
   child.stdout.on("data", (chunk) => {
+    if (quotaOnly && (quotaBytes += chunk.length) > 1024 * 1024) { fail(new Error('Codex 额度输出超过限制')); void close(); return; }
     buffer += decoder.write(chunk);
-    if (buffer.length > 40 * 1024 * 1024) { fail(new Error("Codex 事件超过大小限制")); child.kill(); return; }
+    if (buffer.length > (quotaOnly ? 1024 * 1024 : 40 * 1024 * 1024)) { fail(new Error("Codex 事件超过大小限制")); void close(); return; }
     let newline;
     while ((newline = buffer.indexOf("\n")) >= 0) {
       const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
@@ -117,6 +123,7 @@ export async function startCodexAppServer(config, { cwd, onNotification, onToolC
     closing = true;
     closePromise = (async () => {
       child.stdin.end();
+      if (quotaOnly) { await terminateProcessTree(child); fail(new Error('Codex 额度连接已关闭')); return; }
       const timer = setTimeout(() => {
         if (!child.pid || child.exitCode !== null) return;
         if (process.platform === "win32") {

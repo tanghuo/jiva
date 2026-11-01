@@ -8,6 +8,23 @@ import { createAgentWorkbenchRepository } from '../../src/server/data/agentWorkb
 import { createAgentWorkbenchService } from '../../src/server/application/agentWorkbench/service.js';
 
 async function until(predicate) { for (let i = 0; i < 400; i++) { const value = predicate(); if (value) return value; await new Promise(resolve => setTimeout(resolve, 10)); } throw new Error('Runtime condition timed out'); }
+
+test('closing the primary workbench cancels model discovery and waits for its process cleanup', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-model-close-'));
+  t.after(async () => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-workbench-model-close-')); await rm(root, { recursive: true, force: true }); });
+  const db = initDb(':memory:'); t.after(() => db.close());
+  let cleaned = false;
+  const service = await createAgentWorkbenchService({ repo: createAgentWorkbenchRepository(db), dataDir: root, executionConfig: () => ({}),
+    describeGrok: async (_settings, { signal }) => {
+      try { await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })); }
+      finally { await new Promise(resolve => setTimeout(resolve, 10)); cleaned = true; }
+    } });
+  const request = service.models('grok-build');
+  const rejected = assert.rejects(request, { name: 'AbortError' });
+  await service.close(); await rejected;
+  assert.equal(cleaned, true);
+  await assert.rejects(service.models('grok-build'), { code: 'WORKBENCH_CLOSED' });
+});
 test('sessions in the same or nested workspace run concurrently and cancel independently', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-concurrent-')), data = path.join(root, 'data'); await mkdir(data);
   t.after(async () => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-workbench-concurrent-')); await rm(root, { recursive: true, force: true, maxRetries: 3 }); });

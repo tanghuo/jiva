@@ -22,7 +22,7 @@ import Select from "./Select.jsx";
 import ViewMenu from "./ViewMenu.jsx";
 
 const WikiCanvas = lazy(() => import("./WikiCanvas.jsx"));
-export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavigation, initialTab = "all", tabRequest, onTabChange, onAddReference, onAskAgent, agentOpen = false, onContextChange, openRequest, externalRevision = 0, onChanged, searchRequest }) {
+export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavigation, initialTab = "all", tabRequest, onTabChange, onAddReference, onAskAgent, openRequest, externalRevision = 0, onChanged, searchRequest }) {
   const [tab, setTab] = useState(initialTab);
   const [view, setView] = useState(() => { try { return localStorage.getItem("wikiContentView") === "grid" ? "grid" : "masonry"; } catch { return "masonry"; } });
   const [stackSimilar, setStackSimilar] = useState(() => { try { return localStorage.getItem("wikiStackSimilar") === "true"; } catch { return false; } });
@@ -61,7 +61,6 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
   const [purgeConfirmation, setPurgeConfirmation] = useState(null);
   const [purgeConfirmPhrase, setPurgeConfirmPhrase] = useState("");
   const [purgeNotice, setPurgeNotice] = useState("");
-  const [cleanupRetry, setCleanupRetry] = useState(null);
   const [dragging, setDragging] = useState(false);
   const files = useRef(null);
   const writeLock = useRef(false);
@@ -136,7 +135,6 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
   }, [availableTags.data]);
   function refresh() { setRevision((n) => n + 1); onChanged?.(); }
   useEffect(() => { onTabChange?.(tab); }, [tab, onTabChange]);
-  useEffect(() => { onContextChange?.(selected.size ? [...selected] : stack.length ? [stack.at(-1).id] : []); }, [selected, stack, onContextChange]);
   useEffect(() => {
     if (!tabRequest || lastTabRequest.current === tabRequest) return;
     lastTabRequest.current = tabRequest;
@@ -342,8 +340,8 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
       if (failed.length) setError(`${failed.length} 条未删除：${failed[0].message}。未删除内容仍保留选中，可重试。`);
     } finally { writeLock.current = false; setBusy(false); }
   }
-  async function purgeTrash(retry) {
-    const payload = retry === true ? cleanupRetry : purgeConfirmation;
+  async function purgeTrash() {
+    const payload = purgeConfirmation;
     if (readOnly || writeLock.current || !payload) return;
     writeLock.current = true; setBusy(true); setError(""); setPurgeNotice("");
     try {
@@ -353,11 +351,9 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
       setImports((current) => current.filter((row) => !deleted.has(row.id)));
       setSelected(new Set(result.failed.map((entry) => entry.id)));
       setPurgeNotice(`已永久删除 ${deleted.size} 条内容。`);
-      setCleanupRetry(result.historyCleanupFailed?.length ? { ids: result.deleted.length ? result.deleted : payload.ids, ...(payload.all ? { all: true, ids: undefined } : {}) } : null);
-      if (result.failed.length || result.cleanupFailed.length || result.historyCleanupFailed?.length) setError([
+      if (result.failed.length || result.cleanupFailed.length) setError([
         result.failed.length ? `${result.failed.length} 条删除失败：${result.failed[0].message}。可重试。` : "",
         result.cleanupFailed.length ? `${result.cleanupFailed.length} 个原文件未能清理，内容记录已删除；请关闭应用后运行离线文件清理工具。` : "",
-        result.historyCleanupFailed?.length ? `${result.historyCleanupFailed.length} 份历史文件尚未清理，可以重试。` : "",
       ].filter(Boolean).join(" "));
       refresh();
     } catch (failure) { setError(failure.message); refresh(); }
@@ -389,7 +385,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
     } finally { writeLock.current = false; setBusy(false); }
   }
   // 「问 Agent」 lives in each page header (library, canvas, detail) as a secondary action — no breadcrumb bar.
-  const askAgent = !readOnly && onAskAgent ? <button className="wiki-ask-agent" data-agent-trigger aria-expanded={agentOpen} disabled={busy || detailBusy || creationBusy || canvasBusy} onClick={onAskAgent} title="打开对话：可附带当前打开的内容或资料篮中的资料"><MessageCircle size={16} />问 Agent</button> : null;
+  const askAgent = !readOnly && onAskAgent ? <button className="wiki-ask-agent" data-agent-trigger disabled={busy || detailBusy || creationBusy || canvasBusy} onClick={onAskAgent} title="打开 Agent 工作台；携带资料请先放进资料篮"><MessageCircle size={16} />问 Agent</button> : null;
   return <div className="wiki-shell" onContextMenu={(event) => {
     setBackMenu(null);
     const card = event.target.closest("[data-element-id]");
@@ -416,9 +412,8 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
         {purgeNotice && <p className="wiki-toast" role="status"><CheckCircle2 size={17} aria-hidden="true" /><span>{purgeNotice}</span><button className="icon-only button-sm" aria-label="关闭提示" onClick={() => setPurgeNotice("")}><X size={16} /></button></p>}
       </div>
       {error && <p className="wiki-error" role="alert">{error}<button onClick={() => setError("")}>关闭提示</button></p>}
-      {cleanupRetry && <button disabled={busy} onClick={() => purgeTrash(true)}>有文件没删干净，点此再试</button>}
       {stack.length === 0 && imports.length > 0 && <section className="wiki-imports" aria-label="保存结果"><header><strong>保存结果</strong><button className="text-button" disabled={busy || creationBusy} onClick={() => setImports([])}>收起</button></header><ul>{imports.map((row, index) => <li key={index}><span>{row.name}</span><span>{row.status}</span><button className="text-button" disabled={busy || detailBusy || creationBusy} onClick={() => open(row.id)} aria-label={`查看保存结果：${row.name}`}>查看</button></li>)}</ul></section>}
-      {tab === "canvas" && <div hidden={stack.length > 0}><CanvasBoundary onBack={() => chooseTab("all")}><Suspense fallback={<p className="wiki-muted">正在打开画布…</p>}><WikiCanvas headerActions={askAgent} quietAdd={agentOpen} readOnly={readOnly} revision={resourceRevision} addedIds={canvasAdded} visible={stack.length === 0} externalBusy={busy || detailBusy || Boolean(creation)} onChanged={refresh} onBusyChange={setCanvasBusy} onAdd={addContent} onOpen={open} /></Suspense></CanvasBoundary></div>}
+      {tab === "canvas" && <div hidden={stack.length > 0}><CanvasBoundary onBack={() => chooseTab("all")}><Suspense fallback={<p className="wiki-muted">正在打开画布…</p>}><WikiCanvas headerActions={askAgent} readOnly={readOnly} revision={resourceRevision} addedIds={canvasAdded} visible={stack.length === 0} externalBusy={busy || detailBusy || Boolean(creation)} onChanged={refresh} onBusyChange={setCanvasBusy} onAdd={addContent} onOpen={open} /></Suspense></CanvasBoundary></div>}
       <div hidden={stack.length > 0 || tab === "canvas"}>
         {/* One floating tool layer: title + search on top, actions top-right, filters in the bottom capsule. */}
         <FloatingLayer className="wiki-float" headerClassName="wiki-page-header page-header" filtersClassName="wiki-toolbar"
@@ -428,7 +423,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
             onKeyDown={(event) => { if (event.key === "Escape" && q) { event.preventDefault(); event.stopPropagation(); setQ(""); } }} placeholder={readOnly || tab === "trash" ? "搜索文字或文件名…" : "搜索文字、文件名或描述画面…"} />{!q && <kbd className="wiki-search-hint" aria-hidden="true">{modKey} K</kbd>}</label>}
           actions={!readOnly && (tab === "trash"
             ? <button className="danger-quiet" disabled={busy || list.loading} onClick={() => { setPurgeConfirmPhrase(""); setPurgeConfirmation({ all: true }); }}><Trash2 size={16} />清空回收站</button>
-            : <>{askAgent}<Button variant={agentOpen ? "secondary" : "primary"} disabled={busy} onClick={addContent}><Plus size={16} />添加内容</Button></>)}
+            : <>{askAgent}<Button variant="primary" disabled={busy} onClick={addContent}><Plus size={16} />添加内容</Button></>)}
           filters={<>{["all", "image", "video", "text"].includes(tab) && <div className="wiki-type-chips" role="group" aria-label="快速筛选">{contentSections.filter((section) => section.key !== "canvas").map((section) => <button type="button" key={section.key} aria-label={`快速筛选：${section.label}`} aria-pressed={tab === section.key} disabled={busy} onClick={() => chooseTab(section.key)}>{section.key === "all" ? "全部" : section.label}</button>)}</div>}<TagFilter aliases={availableTags.data?.aliases || []} tags={availableTags.data?.tags || []} selected={tags} match={tagMatch} disabled={busy} onChange={(next) => { setTags(next); }} />{tags.length > 1 && <Select className="wiki-tag-match" aria-label="标签匹配方式" value={tagMatch} disabled={busy} onChange={setTagMatch} options={[{ value: "any", label: "任意匹配" }, { value: "all", label: "全部匹配" }]} />}<span>{list.data ? (list.data.possible?.length ? "0 条明确匹配" : hasCollapsedMembers ? `${list.data.pagination.total} 项 · ${list.data.totalElements} 条内容` : `${list.data.pagination.total} 条内容`) : "正在读取…"}</span>
           {tab === "text" && !readOnly && <Select className="wiki-text-sort" aria-label="文字排序" title="使用次数 = 引用次数 + 复制次数（全部历史记录）" value={textSort} disabled={busy} onChange={setTextSort}
             options={[{ value: "updated", label: "最近更新" }, { value: "usage", label: "使用次数从多到少" }]} />}

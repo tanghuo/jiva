@@ -169,12 +169,14 @@ test('invalid JSON cannot silently run using the previous valid input', options,
 test('submitted snapshots retain fixed content as well as runtime inputs', options, async (t) => {
   const { page, app, workflow } = await setup(t, [n('fixed', 'element', { source: 'fixed', parameter: 'fixed', valueType: 'text', default: '固定要求' }), n('runtime', 'element', { source: 'runtime', parameter: 'runtime', valueType: 'text', default: '本次内容' })]);
   await begin(page);
+  await page.locator('.workflow-preset-materials > summary').click();
   const card = page.locator('.workflow-preparation-card[data-node-id="fixed"]');
   await card.getByText('固定要求', { exact: true }).waitFor();
   assert.equal(await card.locator('textarea').count(), 0, 'fixed content starts read-only');
   await card.getByRole('button', { name: '修改这项固定内容', exact: true }).click();
   await page.getByLabel('第 1 步 · fixed', { exact: true }).fill('提交前修改的固定要求');
-  await card.getByText('已修改：开始时会保存到流程，以后每次运行都用新内容。', { exact: true }).waitFor();
+  await card.getByText('已调整', { exact: true }).waitFor();
+  await page.getByRole('checkbox', { name: /将 1 项素材修改保存为流程默认值/ }).check();
   await page.getByRole('button', { name: '保存修改并开始运行', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   const loaded = await (await fetch(new URL(`api/workflows/${workflow.id}`, app.url))).json();

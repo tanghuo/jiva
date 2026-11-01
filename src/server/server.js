@@ -1,3 +1,4 @@
+import { cleanupRetiredChat } from './assets/retiredChatCleanup.js';
 import { createServer as createHttpServer } from "node:http";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -19,11 +20,9 @@ import { createOrganizationRepository } from "./data/organizationRepository.js";
 import { createOrganizationService } from "./application/organizationService.js";
 import { createSemanticRepository } from "./data/semanticRepository.js";
 import { createSemanticService } from "./application/semanticService.js";
-import { createChatRepository } from "./data/chatRepository.js";
-import { createChatService } from "./application/chatService.js";
 import { createUsageRepository } from "./data/usageRepository.js";
-import { createChatArchiveRepository } from "./data/chatArchiveRepository.js";
-import { createChatArchiveService } from "./application/chatArchiveService.js";
+import { createQuotaRepository } from './data/quotaRepository.js';
+import { createQuotaService } from './application/quotaService.js';
 import { createVideoAnalysisRepository } from "./data/videoAnalysisRepository.js";
 import { createVideoAnalysisService } from "./application/videoAnalysisService.js";
 import { createTemporaryShares } from "./application/temporaryShares.js";
@@ -59,11 +58,11 @@ export async function createServer(options = {}) {
   await mkdir(dataDir, { recursive: true });
   const dbPath = path.join(dataDir, "library.sqlite3");
   const db = initDb(dbPath);
+  try { await cleanupRetiredChat(dataDir); } catch (error) { db.close(); throw error; }
   const vectorQueries = createVectorQueries(db, dbPath);
   const imageStore = createImageStore(path.join(dataDir, "assets"));
-  const archive = createChatArchiveService({ repo: createChatArchiveRepository(db), imageStore, dataDir });
   const wikiRepo = createElementRepository(db);
-  const wiki = createElementService(wikiRepo, imageStore, archive.cleanup, createVideoStore(path.join(dataDir, "assets", "videos")));
+  const wiki = createElementService(wikiRepo, imageStore, createVideoStore(path.join(dataDir, "assets", "videos")));
   try { await wiki.prepareImages(); }
   catch (error) { db.close(); throw error; }
   const rendererDist = path.join(projectRoot, "dist/renderer");
@@ -86,7 +85,6 @@ export async function createServer(options = {}) {
     getEmbeddingConfig: () => organization.status().config.embedding,
   });
   mediaSearch.searchFirstFrame = (elementId) => videoAnalysis.search({ elementId, firstFrame: true });
-  const chat = createChatService({ repo: createChatRepository(db), wiki, archive, organization, dataDir, recordUsage });
   let agentWorkbench;
   const workflow = createWorkflowService({ repo: createWorkflowRepository(db), store: createWorkflowStore(dataDir), wiki, imageStore, executeAgent: (...args) => agentWorkbench.executeWorkflowAgent(...args), executionConfig: () => organization.executionConfig() });
   const workbenchRepo = createAgentWorkbenchRepository(db);
@@ -96,11 +94,13 @@ export async function createServer(options = {}) {
   const agentTools = createAgentTools({ wiki, repo: createAgentWikiRepository(db), tasks: agentTasks });
   const artifactInspection = await agentTasks.inspectStorage();
   if (artifactInspection.unreferenced.length) console.warn(`[self-wiki] Agent artifact inspection: ${artifactInspection.unreferenced.length} unreferenced files preserved; inspect /api/agent/storage-inspection`);
-  agentWorkbench = await createAgentWorkbenchService({ repo: workbenchRepo, dataDir, legacyChat: chat, wiki, executionConfig: () => organization.executionConfig(), initiallyEnabled: options.agentWorkbenchEnabled === true, openEngine: options.openWorkbenchEngine, tools: agentTools, tasks: agentTasks, commandStore: createAgentCommandStore(dataDir), applicationToolsVerified, codexVerified: options.agentCodexWorkbenchEnabled !== false });
+  agentWorkbench = await createAgentWorkbenchService({ repo: workbenchRepo, dataDir, wiki, executionConfig: () => organization.executionConfig(), initiallyEnabled: options.agentWorkbenchEnabled !== false, openEngine: options.openWorkbenchEngine, tools: agentTools, tasks: agentTasks, commandStore: createAgentCommandStore(dataDir), applicationToolsVerified, codexVerified: options.agentCodexWorkbenchEnabled !== false });
   agentTasks.schedule();
   const instance = { application: "self-wiki", protocolVersion: 1, instanceId: randomUUID(), dataDir };
   const aionuiExperiment = createAionuiExperiment({ root: projectRoot, dataDir });
+  const quota = await createQuotaService({repo:createQuotaRepository(db),dataDir,executionConfig:()=>organization.executionConfig(),...(options.quotaReaders ? {readers:options.quotaReaders} : {})});
   const services = {
+    quota,
     aionuiExperiment,
     authentication,
     instance,
@@ -108,7 +108,6 @@ export async function createServer(options = {}) {
     organization,
     semantic,
     videoAnalysis,
-    chat,
     workflow,
     agentWorkbench,
     agentTasks,
@@ -143,12 +142,12 @@ export async function createServer(options = {}) {
     }
     if (browserBlockedPorts.has(actualPort)) throw new Error("Unable to allocate a browser-accessible port after 10 attempts");
   } catch (error) {
+    await quota.close();
     await agentWorkbench.close();
     await agentTasks.close();
     await workflow.close();
     await temporaryShares.close();
     await videoAnalysis.close();
-    await chat.close();
     await sharing.close();
     await organization.close();
     await vectorQueries.close();
@@ -167,12 +166,12 @@ export async function createServer(options = {}) {
     get credentialFile() { return credentialsPath; },
     close() {
       closing ||= (async () => {
+        await quota.close();
         await aionuiExperiment.close().catch(error => console.error('AionUi shutdown was not confirmed:', error.message));
         await agentWorkbench.close();
         await agentTasks.close();
         await workflow.close();
         await videoAnalysis.close();
-        await chat.close();
         await organization.close();
         const stopped = new Promise((resolve) => server.close(resolve));
         server.closeAllConnections();
@@ -194,7 +193,6 @@ export async function createServer(options = {}) {
     credentialsPath = await saveLocalCredentials(runtimeDir, instance.instanceId, authentication.credential());
     await writeFile(runtimePath, JSON.stringify(instance), { flag: "wx", mode: 0o600 });
     organization.initialize({ url: instance.url, instanceId: instance.instanceId });
-    chat.initialize({ url: instance.url, instanceId: instance.instanceId });
     videoAnalysis.start();
     workflow.start();
     wiki.startPreviews().catch((error) => console.error("[self-wiki] preview warming failed:", error?.stack || error));

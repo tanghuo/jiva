@@ -38,7 +38,9 @@ readline.createInterface({ input: process.stdin }).on('line', async line => {
   if (method === 'session/set_config_option') {
     if (params.configId === 'model') model = params.value;
     if (params.configId === 'thinking_level') effort = params.value;
-    if (params.configId === 'mode') mode = params.value;
+    if (params.configId === 'mode') {
+      try { await access(path.join(process.cwd(), '.ignore-mode')); } catch { mode = params.value; }
+    }
     return reply(value.id, { configOptions: config() });
   }
   if (method === 'session/cancel') { if (hanging) { reply(hanging, { stopReason: 'cancelled' }); hanging = null; } return; }
@@ -52,12 +54,13 @@ readline.createInterface({ input: process.stdin }).on('line', async line => {
   let answer = 'fixture reply';
   if (text.startsWith('REMEMBER ')) { await writeFile(stateFile(), JSON.stringify({ word: text.slice(9) })); answer = 'remembered'; }
   if (text === 'RECALL') answer = JSON.parse(await readFile(stateFile(), 'utf8')).word;
-  if (text === 'WRITE' || text === 'ALWAYS') {
+  if (text === 'WRITE' || text === 'ALWAYS' || text === 'EXECUTE') {
     const target = path.join(process.cwd(), 'result.txt');
     const diff = { type: 'diff', path: target, oldText: '', newText: 'approved\n' };
-    const toolCall = { toolCallId: 'write-1', title: 'Write result.txt', kind: 'edit', status: 'pending', rawInput: { path: target }, content: [diff], locations: [{ path: target }] };
+    const toolCall = { toolCallId: 'write-1', title: 'Write result.txt', kind: text === 'EXECUTE' ? 'execute' : 'edit', status: 'pending', rawInput: { path: target }, content: [diff], locations: [{ path: target }] };
     update({ ...toolCall, sessionUpdate: 'tool_call' });
-    const decision = await ask(toolCall, text === 'ALWAYS');
+    const automatic = mode === 'yolo' || mode === 'auto_edit' && toolCall.kind === 'edit';
+    const decision = automatic ? { outcome: { optionId: 'yes' } } : await ask(toolCall, text === 'ALWAYS');
     const allowed = decision?.outcome?.optionId === 'yes';
     if (allowed) await writeFile(target, 'approved\n');
     update({ sessionUpdate: 'tool_call_update', toolCallId: 'write-1', status: allowed ? 'completed' : 'failed' });

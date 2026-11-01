@@ -1,5 +1,5 @@
 import { elementQuery } from '../../../shared/domain/elements.js';
-import { chatProposal } from '../../../shared/domain/chat.js';
+import { wikiProposal } from '../../../shared/domain/wikiProposal.js';
 import { agentError, requestKey } from '../../../shared/domain/agentWorkbench/contracts.js';
 
 const schema = (properties, required = []) => ({ type: 'object', additionalProperties: false, properties, required });
@@ -41,8 +41,8 @@ export function createAgentTools({ wiki, repo, tasks }) {
         if (name === 'wiki_read') { const snapshot = repo.snapshot(input.elementId); read.set(snapshot.id, snapshot); return { ...snapshot, version: snapshot.fingerprint, reference: `wiki:${snapshot.id}` }; }
         if (name === 'wiki_propose') {
           requestKey(input.requestKey);
-          if (input.proposal.excerpts !== undefined) throw agentError('INVALID_PROPOSAL', '新工作台建议不接受旧聊天轮次引用');
-          const payload = chatProposal(input.proposal);
+          if (input.proposal.excerpts !== undefined) throw agentError('INVALID_PROPOSAL', '建议不接受历史对话片段');
+          const payload = wikiProposal(input.proposal);
           const required = [...new Set([...payload.sourceIds, ...[payload.elementId, payload.sourceId, payload.targetId].filter(Boolean)])];
           const snapshots = required.map(id => { const snapshot = read.get(id); if (!snapshot) throw agentError('READ_REQUIRED', `请先读取 wiki:${id}`); return snapshot; });
           return repo.propose(sessionId, turnId, input.requestKey, payload, snapshots);

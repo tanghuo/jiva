@@ -236,7 +236,7 @@ function jsxOpeningTags(source, name) {
   return tags;
 }
 // Lightboxes are full-screen media viewers, not header/body/footer dialogs; everything else uses DialogFrame/ConfirmDialog.
-const rawDialogAllowed = new Set(["src/renderer/src/ui/ConfirmDialog.jsx", "src/renderer/src/ChatImageViewer.jsx", "src/renderer/src/features/workflow/WorkflowImagePreview.jsx"]);
+const rawDialogAllowed = new Set(["src/renderer/src/ui/ConfirmDialog.jsx", "src/renderer/src/features/workflow/WorkflowImagePreview.jsx"]);
 for (const file of files) {
   const repoPath = toRepoPath(file);
   if (!repoPath.startsWith("src/renderer/")) continue;

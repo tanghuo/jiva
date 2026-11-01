@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { useQuotaOcclusion } from './quotaOcclusion.js';
 
 export default function DetailImage({ src, alt, onLoad, onError, onContextMenu, inert }) {
+  useQuotaOcclusion(!inert);
   const stage = useRef(null), image = useRef(null), pan = useRef(null);
   const view = useRef({ scale: 1, x: 0, y: 0 });
   const [transform, setTransform] = useState(view.current);

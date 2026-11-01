@@ -15,7 +15,6 @@ export async function handleAgentWorkbenchRoute(service, req, res, url, access, 
   else if (p === '/sessions' && method === 'GET') result = { sessions: service.list() };
   else if (p === '/sessions' && method === 'POST') result = service.createSession(await body());
   else if (p === '/wiki-template' && method === 'POST') result = await service.wikiTemplate(await body());
-  else if ((match = /^\/legacy\/(\d+)\/continue$/.exec(p)) && method === 'POST') result = await service.continueLegacy(Number(match[1]), await body());
   else if ((match = /^\/sessions\/(\d+)$/.exec(p)) && method === 'PATCH') result = service.configureSession(Number(match[1]), await body());
   else if ((match = /^\/sessions\/(\d+)$/.exec(p)) && method === 'GET') result = service.detail(Number(match[1]));
   else if ((match = /^\/sessions\/(\d+)\/turns$/.exec(p)) && method === 'POST') result = service.submit(Number(match[1]), await body());

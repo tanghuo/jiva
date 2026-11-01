@@ -63,8 +63,8 @@ test("the floating tool layer puts title and search on top, actions top-right an
 });
 
 test("every Agent surface uses one skeleton: sessions nav, timeline, resources aside", () => {
-  const html = renderToStaticMarkup(h(ui.AgentShell, { sessions: h("button", null, "新建对话"), header: h("h1", null, "Agent 对话"), resources: h("p", null, "引用") }, h("div", null, "时间线")));
-  assert.equal(html, '<div class="agent-shell"><nav class="agent-shell-sessions" aria-label="会话列表"><button>新建对话</button></nav><div class="agent-shell-timeline"><h1>Agent 对话</h1><div>时间线</div></div><aside class="agent-shell-resources" aria-label="资源"><p>引用</p></aside></div>');
+  const html = renderToStaticMarkup(h(ui.AgentShell, { sessions: h("button", null, "新建对话"), header: h("h1", null, "Agent 工作台"), resources: h("p", null, "引用") }, h("div", null, "时间线")));
+  assert.equal(html, '<div class="agent-shell"><nav class="agent-shell-sessions" aria-label="会话列表"><button>新建对话</button></nav><div class="agent-shell-timeline"><h1>Agent 工作台</h1><div>时间线</div></div><aside class="agent-shell-resources" aria-label="资源"><p>引用</p></aside></div>');
 });
 
 test("AgentShell can reopen the folded resource column as a phone sheet", () => {

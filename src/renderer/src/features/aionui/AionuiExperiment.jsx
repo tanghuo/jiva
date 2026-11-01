@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, MessageCircle } from 'lucide-react';
+import { Bot } from 'lucide-react';
 import { request } from '../../api.js';
 import AgentShell from '../../ui/AgentShell.jsx';
 import PageHeader from '../../ui/PageHeader.jsx';
 import './aionui.css';
+import { useQuotaOcclusion } from '../../quotaOcclusion.js';
 
 export default function AionuiExperiment({ active = true, occluded = false }) {
+  useQuotaOcclusion(active);
   const surface = useRef(null), mounted = useRef(false), launching = useRef(null);
   const [url, setUrl] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const embed = window.wikiDesktop?.embedAionui;
@@ -43,12 +45,11 @@ export default function AionuiExperiment({ active = true, occluded = false }) {
     window.addEventListener('resize', update); window.addEventListener('scroll', update, true);
     return () => { observer.disconnect(); window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); void embed?.({ type: 'hide' })?.catch(() => {}); };
   }, [active, occluded]);
-  // Same AgentShell as Agent 对话 and the workbench. AionUi keeps its own conversations inside the
+  // Same AgentShell as the workbench. AionUi keeps its own conversations inside the
   // embedded app, so the left column links the other Agent surfaces instead of listing sessions.
   return <main className="aionui-experiment" aria-label="AionUi 内嵌工作台">
     <AgentShell className="aionui-shell" sessionsLabel="Agent 会话入口" resourcesLabel="AionUi 连接"
       sessions={<>
-        <a className="nav-item" href="#agent"><MessageCircle size={16} /><span>Agent 对话</span></a>
         <a className="nav-item" href="#workbench"><Bot size={16} /><span>Agent 工作台</span></a>
         <p className="agent-shell-empty">AionUi 的会话列表在中间的内嵌窗口里。</p>
       </>}

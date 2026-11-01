@@ -16,7 +16,6 @@ import { createWorkflowService } from '../../src/server/application/workflow/ser
 import { createAgentTools } from '../../src/server/application/agentTools/service.js';
 import { workflowCallChain } from '../../src/shared/domain/agentWorkbench/workflow.js';
 import { workflowNode as n, output as o, constant as c } from '../../src/shared/domain/workflow/examples.js';
-import { createChatRepository } from '../../src/server/data/chatRepository.js';
 import { createAgentWikiRepository } from '../../src/server/data/agentWikiRepository.js';
 import { migrateAgentWorkflow } from '../../src/server/data/agentWorkflowMigration.js';
 import { DatabaseSync } from 'node:sqlite';
@@ -132,33 +131,6 @@ test('workflow Agent gets a fresh restricted session and host denies files, shel
   assert.equal(result.state, 'succeeded', JSON.stringify(result)); assert.equal(calls, 1);
   const child = sessions.list().find(s => s.purpose === 'workflow'); assert.ok(child); assert.equal(child.data.callChain.depth, 1);
   await assert.rejects(workbench.policy(child.id, { revision: child.revision, write: 'allow_workspace', readRoots: [] }), { code: 'TOOL_DENIED' });
-});
-
-test('legacy conversion preserves branch, original drafts, images and source history; retries keep edited new drafts', async t => {
-  const f = await fixture(t), legacy = createChatRepository(f.db), original = legacy.create('legacy source');
-  const attachment = legacy.addAttachment('synthetic.png', 'original image');
-  const started = legacy.begin(original.id, { requestKey: key(), text: 'historical question', sourceIds: [], attachmentIds: [attachment.id], model: 'fixture', branchRevision: original.branchRevision });
-  legacy.writeTrace(started.turn.id, 'request', { marker: 'preserved trace' });
-  legacy.updateTurn({ ...started.turn, state: 'completed', answer: 'historical answer', events: [{ id: 'image-1', type: 'image', artifact: 'synthetic.png' }] });
-  const source = legacy.fork(started.turn.id, key(), legacy.session(original.id).branchRevision);
-  legacy.setDraft(source.id, { text: '  原始未发草稿\n', revision: 10 }); legacy.setImageDraft(source.id, { attachments: [attachment], revision: 11 }); legacy.setThread(source.id, 'do-not-reuse-native-thread');
-  const old = legacy.detail(source.id), png = await sharp({ create: { width: 5, height: 5, channels: 3, background: '#36f' } }).png().toBuffer();
-  const tools = createAgentTools({ tasks: f.tasks, repo: createAgentWikiRepository(f.db) });
-  let prompts = 0;
-  const workbench = await createAgentWorkbenchService({ repo: f.sessions, dataDir: f.dir, initiallyEnabled: true, applicationToolsVerified: true, executionConfig: config, tasks: f.tasks, tools, wiki: {}, legacyChat: { detail: id => ({ ...legacy.detail(id), running: false }), newDraft: () => legacy.newDraft(), attachmentImage: async () => png }, openEngine: async () => { prompts++; throw new Error('must not prompt'); } });
-  t.after(() => workbench.close());
-  const converted = await workbench.continueLegacy(source.id);
-  assert.equal(converted.engineSessionId, null); assert.equal(converted.data.restricted, true); assert.equal(converted.data.provenance.sessionId, source.id);
-  assert.equal(converted.data.provenance.branchRevision, source.branchRevision); assert.equal(prompts, 0);
-  assert.deepEqual(converted.data.provenance.forkedFrom, { ...source.forkedFrom }); assert.match(converted.data.initialContext, /historical answer/); assert.match(converted.data.initialContext, /requestTraceVersion/);
-  const draft = tools.draft(converted.id); assert.equal(draft.text, '  原始未发草稿\n'); assert.equal(draft.attachments.length, 1);
-  assert.deepEqual((await f.tasks.content(draft.attachments[0], converted.id)).bytes, png);
-  tools.saveDraft(converted.id, { revision: draft.revision, text: 'new edited draft', attachments: draft.attachments });
-  assert.equal((await workbench.continueLegacy(source.id)).id, converted.id); assert.equal(tools.draft(converted.id).text, 'new edited draft');
-  assert.deepEqual(legacy.detail(source.id), old); assert.equal(prompts, 0);
-  await workbench.configure({ agentWorkbenchEnabled: false });
-  await assert.rejects(workbench.continueLegacy(source.id), { code: 'WORKBENCH_DISABLED' });
-  assert.deepEqual(legacy.detail(source.id), old);
 });
 
 test('workflow migration rolls back atomically and is repeatable', () => {

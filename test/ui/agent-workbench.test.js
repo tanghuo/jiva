@@ -187,22 +187,6 @@ test('workbench starts from a task, keeps the composer visible and recovers a fa
   assert.deepEqual(errors, []);
 });
 
-test('enabled workbench converts old drafts through the UI without prompting or mutating legacy history', { timeout: 30000, skip: !executablePath }, async t => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-convert-ui-')); let app, browser, prompts = 0;
-  t.after(async () => { await browser?.close(); await app?.close(); assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-workbench-convert-ui-')); await rm(root, { recursive: true, force: true, maxRetries: 3 }); });
-  app = await createServer({ port: 0, dataDir: root, agentWorkbenchEnabled: true, async openWorkbenchEngine(_settings, callbacks) { assert.equal(callbacks.restricted, true); return { sessionId: 'converted-fixture', version: 'test', capabilities: {}, cancel() {}, async close() {}, async prompt(text, delivery) { prompts++; assert.match(text, /显式从旧聊天转换/); delivery('attempted'); await callbacks.onEvent('message.delta', { text: '转换后的独立回答' }); return {}; } }; } });
-  const api = async (route, body, method = body === undefined ? 'GET' : 'POST') => { const response = await fetch(new URL('/api/' + route, app.url), { method, headers: { 'content-type': 'application/json' }, ...(body !== undefined && { body: JSON.stringify(body) }) }); assert.equal(response.status, 200); return response.json(); };
-  const legacy = await api('chat/sessions', {});
-  await api(`chat/sessions/${legacy.id}/draft`, { text: '保留旧草稿', revision: 20 }, 'PUT');
-  browser = await chromium.launch({ executablePath, headless: true }); const page = await browser.newPage(); page.setDefaultTimeout(10000);
-  await stubWorkbenchModels(page);
-  await page.goto(app.url + '#agent?session=' + legacy.id); await page.getByLabel('会话消息').fill('保留旧草稿');
-  await page.getByRole('button', { name: '发送消息', exact: true }).click();
-  await page.getByLabel('任务内容').waitFor(); assert.equal(await page.getByLabel('任务内容').inputValue(), '保留旧草稿');
-  await page.getByText('已转换上下文，使用新的原生会话。', { exact: false }).waitFor(); assert.equal(prompts, 0);
-  assert.equal((await api(`chat/sessions/${legacy.id}`)).session.draft.text, '保留旧草稿'); assert.equal((await api(`chat/sessions/${legacy.id}`)).turns.length, 0);
-  await page.getByRole('button', { name: '发送', exact: true }).click(); await page.getByText('转换后的独立回答', { exact: true }).waitFor(); assert.equal(prompts, 1);
-});
 test('workbench creates trusted scratch, restores approval on refresh, rejects write, and fits a narrow viewport', { timeout: 30000, skip: !executablePath }, async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-ui-')); let app, browser, file;
   t.after(async () => { await browser?.close(); await app?.close(); assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-workbench-ui-')); await rm(root, { recursive: true, force: true, maxRetries: 3 }); });
@@ -222,7 +206,7 @@ test('workbench creates trusted scratch, restores approval on refresh, rejects w
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); page.setDefaultTimeout(8000);
   await stubWorkbenchModels(page);
   await page.goto(app.url + '#workbench');
-  await page.getByRole('button', { name: '启用工作台', exact: true }).click();
+
   if (page.viewportSize().width <= 900) await page.getByRole('button', { name: '切换会话列表' }).click();
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   await page.getByRole('textbox', { name: '任务内容' }).fill('写入合成文件');

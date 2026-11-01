@@ -30,8 +30,6 @@ export const commands = [
   { name: "video-analysis reject", args: ["id"], description: "Reject an observation and suppress its future reapplication", method: "POST", route: "/api/video-analysis/results/:id/reject", action: "input", options: input, example: { revision: 1 } },
   { name: "visual search", description: "Find related pictures or timestamped video frames", method: "GET", route: "/api/visual-search", options: { q: string("Search text"), "element-id": integer("Source element ID", 1), "frame-id": integer("Source video frame ID", 1) } },
   { name: "visual index", description: "Resume missing visual embeddings", method: "POST", route: "/api/visual-index/rebuild" },
-  { name: "chat propose", description: "Propose create_text, add_tags or add_relation for user acceptance; requires the active conversation runtime token", method: "POST", route: "/api/chat/proposals", action: "input", options: input,
-    example: { kind: "create_text", body: "整理后的笔记", tags: ["笔记"], sourceIds: [], reason: "根据本轮讨论生成" } },
   { name: "organize index-status", description: "Read semantic index progress and errors", method: "GET", route: "/api/organization/semantic/status" },
   { name: "organize index-probe", description: "Test the configured embedding model", method: "POST", route: "/api/organization/semantic/probe" },
   { name: "organize index-rebuild", description: "Queue semantic indexing: mode missing, retry or all", method: "POST", route: "/api/organization/semantic/rebuild", action: "input", options: input, example: { mode: "missing" } },

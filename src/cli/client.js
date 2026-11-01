@@ -52,9 +52,7 @@ async function identify(url, timeout, headers) {
 export async function connect(options) {
   const timeout = options.timeout ?? 30000;
   const explicitUrl = options.url ?? (process.env.SELF_WIKI_URL || undefined);
-  const toolHeaders = process.env.SELF_WIKI_CHAT_TOKEN ? { 'x-self-wiki-chat-token': process.env.SELF_WIKI_CHAT_TOKEN, 'x-self-wiki-chat-call': process.env.SELF_WIKI_CHAT_CALL || '' } : null;
   async function credentialHeaders(file, expectedInstanceId) {
-    if (toolHeaders) return toolHeaders;
     if (!file) throw new CliError('AUTH_REQUIRED', 'Explicit --url requires --token-file or SELF_WIKI_TOKEN_FILE. For discovery use --data-dir.', 3);
     let saved;
     try { saved = JSON.parse(await readFile(file, 'utf8')); } catch { throw new CliError('AUTH_REQUIRED', 'Cannot read the local credential file; restart the backend and check --token-file.', 3); }
@@ -94,7 +92,6 @@ export async function connect(options) {
   }
   return {
     instance: { ...instance, url },
-    request: (route, options = {}) => request(url, route, { ...options, timeout, headers: { ...options.headers, ...authHeaders, "x-self-wiki-instance": instance.instanceId,
-      ...(process.env.SELF_WIKI_CHAT_TOKEN && { "x-self-wiki-chat-token": process.env.SELF_WIKI_CHAT_TOKEN, "x-self-wiki-chat-call": process.env.SELF_WIKI_CHAT_CALL || "" }) } }),
+    request: (route, options = {}) => request(url, route, { ...options, timeout, headers: { ...options.headers, ...authHeaders, "x-self-wiki-instance": instance.instanceId } }),
   };
 }

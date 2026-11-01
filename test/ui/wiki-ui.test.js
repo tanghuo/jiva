@@ -1,3 +1,4 @@
+import { stubWorkbenchModels } from '../helpers/workbenchModels.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -24,6 +25,7 @@ async function setup(t, { realClipboard = false } = {}) {
   browser = await chromium.launch({ executablePath: browserPath, headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
+  await stubWorkbenchModels(page);
   page.setDefaultTimeout(10000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -1719,8 +1721,8 @@ test("Wiki UI completes image/text association, copy, edit, navigation, detach a
   await page.getByRole("button", { name: "打开内容：人物练习.png", exact: true }).waitFor();
   await page.getByRole("button", { name: "返回", exact: true }).click();
   assert.equal(await page.getByLabel("搜索内容", { exact: true }).inputValue(), "contrast");
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
-  await page.getByRole("main", { name: "Agent 对话", exact: true }).waitFor();
+  await page.getByRole("link", { name: "Agent 工作台", exact: true }).click();
+  await page.getByRole("main", { name: "Agent 工作台", exact: true }).waitFor();
 });
 
 test("Wiki retains created text after relation failure, retries once, and shares a person across two images", options, async (t) => {

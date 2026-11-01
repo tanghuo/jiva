@@ -2,6 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hasRememberedApprovalMode, rememberApprovalMode, rememberedApprovalMode } from '../../src/renderer/src/features/agentWorkbench/workbenchApprovalMemory.js';
 
+test('Antigravity remembers its approval mode independently of Grok', () => {
+  const storage = memoryStorage();
+  rememberApprovalMode('antigravity-acp', 'auto', storage);
+  rememberApprovalMode('grok-build', 'allow', storage);
+  assert.equal(rememberedApprovalMode('antigravity-acp', storage), 'auto');
+  assert.equal(hasRememberedApprovalMode('antigravity-acp', storage), true);
+  assert.equal(rememberedApprovalMode('grok-build', storage), 'allow');
+});
+
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
   return { getItem: key => values.has(key) ? values.get(key) : null, setItem: (key, value) => values.set(key, String(value)) };

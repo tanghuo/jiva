@@ -1,3 +1,4 @@
+import { stubWorkbenchModels } from '../helpers/workbenchModels.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -24,6 +25,7 @@ async function setup(t) {
   });
   browser = await chromium.launch({ executablePath: browserPath, headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await stubWorkbenchModels(page);
   page.setDefaultTimeout(12000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
   t.after(() => assert.deepEqual(errors, []));
@@ -136,7 +138,7 @@ test("video imports keep original bytes, play and seek, support tags, relations,
   await page.getByRole("button", { name: "移入回收站", exact: true }).click();
   await page.getByRole("complementary", { name: "内容导航" }).getByRole("button", { name: "回收站", exact: true }).click();
   const card = page.locator(`[data-element-id="${video.id}"]`);
-  await card.getByText("本地动画.webm", { exact: true }).waitFor();
+  await card.getByRole("button", { name: "恢复内容", exact: true }).waitFor();
   await card.getByRole("button", { name: "恢复内容", exact: true }).click();
   await card.waitFor({ state: "hidden" });
   assert.equal((await api("elements?kind=video")).pagination.total, 1);
@@ -160,14 +162,11 @@ test("pasted videos offer first-frame organization while staying unavailable as 
   await organization.getByText("整理会比较视频首帧", { exact: false }).waitFor();
   await organization.getByRole("button", { name: "整理此内容", exact: true }).waitFor();
   await organization.getByRole("button", { name: "关闭整理记录", exact: true }).click();
-  await page.getByRole("button", { name: "问 Agent", exact: true }).click();
-  await page.getByRole("button", { name: "加入当前内容", exact: true }).click();
-  await page.getByText("视频暂不支持作为 AI 资料，可在内容库播放。", { exact: false }).waitFor();
-  await page.getByRole("button", { name: "从库中选择", exact: true }).click();
-  const picker = page.getByRole("dialog", { name: "选择会话资料", exact: true });
-  const video = picker.getByRole("button", { name: "粘贴视频.webm", exact: true });
-  await video.waitFor(); assert.equal(await video.isDisabled(), true);
-  await picker.getByText("视频暂不支持作为 AI 资料", { exact: true }).waitFor();
+  await openDetailMenu(page);
+  assert.equal(await page.getByRole('button', { name: '放进资料篮', exact: true }).count(), 0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('link', { name: 'Agent 工作台', exact: true }).click();
+  await page.getByLabel('任务内容').waitFor();
 });
 
 test("dropped video remains labeled in the canvas and its inspector can play it", options, async (t) => {
@@ -199,7 +198,7 @@ test("dropped video remains labeled in the canvas and its inspector can play it"
   await detailPlayer.evaluate(async (element) => { element.muted = true; element.loop = true; await element.play(); });
   await page.waitForFunction(() => document.querySelector(".wiki-detail video")?.currentTime > 0.1);
   await page.screenshot({ path: ".local/video-ui.png", fullPage: true });
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
+  await page.getByRole("link", { name: "Agent 工作台", exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll("video")].every((element) => element.paused));
 });
 

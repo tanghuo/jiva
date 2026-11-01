@@ -1,3 +1,5 @@
+import { migrateQuota } from './quotaMigration.js';
+import { migrateRetireChat } from './retireChatMigration.js';
 import { migrateWorkflow } from "./workflowMigration.js";
 import { migrateAgentWorkbench } from './agentWorkbenchMigration.js';
 import { migrateAgentWiki } from './agentWikiMigration.js';
@@ -210,6 +212,8 @@ export const wikiMigrations = [
   { versions: [43], run: migrateAgentDraftRequests },
   { versions: [44], run: migrateAgentWorkflow },
   { versions: [45], run: migrateAgentProjectNames },
+  { versions: [46], run: migrateRetireChat },
+  { versions: [47], run: migrateQuota },
 ];
 const knownVersions = new Set(wikiMigrations.flatMap((step) => step.versions));
 export const latestWikiVersion = Math.max(...knownVersions);

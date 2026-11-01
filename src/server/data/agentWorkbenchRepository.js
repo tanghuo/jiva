@@ -35,13 +35,13 @@ export function createAgentWorkbenchRepository(db) {
     return { t, s };
   }
   return {
-    findConversion(key) { const row = db.prepare("SELECT result FROM agent_commands WHERE scope='legacy.convert' AND request_key=?").get(key); return row ? session(JSON.parse(row.result).sessionId) : null; },
-    conversion(key, create) {
+    findTemplate(key, hash) { const row = db.prepare("SELECT result,hash FROM agent_commands WHERE scope='wiki.template' AND request_key=?").get(key); if (row && row.hash !== hash) throw agentError('REQUEST_CONFLICT', '同一请求对应不同资料', 409); return row ? session(JSON.parse(row.result).sessionId) : null; },
+    template(key, hash, create) {
       return atomic(() => {
-        const previous = db.prepare("SELECT result FROM agent_commands WHERE scope='legacy.convert' AND request_key=?").get(key);
-        if (previous) return session(JSON.parse(previous.result).sessionId);
+        const previous = db.prepare("SELECT result,hash FROM agent_commands WHERE scope='wiki.template' AND request_key=?").get(key);
+        if (previous) { if (previous.hash !== hash) throw agentError('REQUEST_CONFLICT', '同一请求对应不同资料', 409); return session(JSON.parse(previous.result).sessionId); }
         const value = create();
-        db.prepare("INSERT INTO agent_commands VALUES('legacy.convert',?,'',?)").run(key, JSON.stringify({ sessionId: value.id })); return value;
+        db.prepare("INSERT INTO agent_commands VALUES('wiki.template',?,?,?)").run(key, hash, JSON.stringify({ sessionId: value.id })); return value;
       });
     },
     workspace, session, turn, approval,
@@ -80,6 +80,18 @@ export function createAgentWorkbenchRepository(db) {
         db.prepare('UPDATE agent_sessions SET policy=?,revision=revision+1 WHERE id=?').run(JSON.stringify(policy), id);
         db.prepare('UPDATE agent_approvals SET state=3,decision=\'reject\' WHERE session_id=? AND state=0').run(id);
         append(id, null, s.generation, 'session.policy_changed', { revision: revision + 1 }); return session(id);
+      });
+    },
+    // Approval mode applies to the next turn. The running turn keeps the mode it started with,
+    // and a pending approval stays decidable.
+    updateApprovalMode(id, revision, approvalMode) {
+      return atomic(() => {
+        const s = session(id);
+        if (s.revision !== revision) throw conflict('会话策略已变化，请刷新');
+        const policy = { ...s.policy, approvalMode };
+        db.prepare('UPDATE agent_sessions SET policy=? WHERE id=?').run(JSON.stringify(policy), id);
+        append(id, null, s.generation, 'session.policy_changed', { revision: s.revision, approvalMode });
+        return session(id);
       });
     },
     detail(id) {

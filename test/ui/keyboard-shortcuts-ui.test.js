@@ -1,3 +1,4 @@
+import { stubWorkbenchModels } from '../helpers/workbenchModels.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -21,10 +22,11 @@ test("keyboard shortcuts: Ctrl+K / and Esc drive search, detail navigation and t
     assert.equal(response.status, 201);
   }
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await stubWorkbenchModels(page);
   page.setDefaultTimeout(10000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto(`${app.url}#agent`);
-  await page.getByLabel("会话消息").waitFor();
+  await page.goto(`${app.url}#workbench`);
+  await page.getByLabel("任务内容").waitFor();
   const search = page.getByLabel("搜索内容", { exact: true });
   // Ctrl+K from the agent page jumps to the library search.
   await page.locator("body").press("Control+k");

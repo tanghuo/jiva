@@ -1,3 +1,4 @@
+import { stubWorkbenchModels } from '../helpers/workbenchModels.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -20,7 +21,8 @@ async function setup(t) {
     await rm(dir, { recursive: true, force: true, maxRetries: 3 });
   });
   browser = await chromium.launch({ executablePath: browserPath, headless: true });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(12000);
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await stubWorkbenchModels(page); page.setDefaultTimeout(12000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message)); t.after(() => assert.deepEqual(errors, []));
   const api = async (route, body) => {
     const response = await fetch(new URL(`api/${route}`, app.url), { method: body ? "POST" : "GET", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
@@ -111,7 +113,7 @@ test("marker editor retains failed and invalid drafts on mobile and hidden playb
   await editor.waitFor({ state: "hidden" });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("button", { name: "播放标注：00:00.3", exact: true }).click();
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
+  await page.getByRole("link", { name: "Agent 工作台", exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll("video")].every((video) => video.paused));
   await page.evaluate(() => { window.location.hash = "wiki"; });
   await page.locator(".wiki-detail video").waitFor({ state: "visible" });

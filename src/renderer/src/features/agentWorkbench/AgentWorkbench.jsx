@@ -15,6 +15,7 @@ import useWorkbenchDraft from './useWorkbenchDraft.js';
 import useWorkbenchModels from './useWorkbenchModels.js';
 import { preferredModel, rememberedModel, rememberModel } from './workbenchModelMemory.js';
 import { rememberedApprovalMode, rememberApprovalMode, hasRememberedApprovalMode } from './workbenchApprovalMemory.js';
+import { preferredProject, rememberedProject, rememberProject } from './workbenchProjectMemory.js';
 import useWorkbenchTextarea from './useWorkbenchTextarea.js';
 import WorkbenchResults, { CommandOutput } from './WorkbenchResults.jsx';
 import { maxWorkbenchImages, workbenchImageError, workbenchImageFiles } from './workbenchImages.js';
@@ -157,8 +158,12 @@ function Timeline({ turns, events, artifacts, sessionId, renderResults }) {
 }
 export default function AgentWorkbench({ onOpen }) {
   const [status, setStatus] = useState(null), [sessions, setSessions] = useState([]), [projects, setProjects] = useState([]), [openProjects, setOpenProjects] = useState(() => readStoredSet(OPEN_PROJECTS_KEY) || new Set()), [expandedThreads, setExpandedThreads] = useState(() => readStoredSet(EXPANDED_THREADS_KEY) || new Set()), [selected, setSelected] = useState(null), [detail, setDetail] = useState(null), [events, setEvents] = useState([]);
-  const [settings, setSettings] = useState({ kind: 'scratch', projectId: null, projectPath: '', projectName: '', engine: 'grok-build', model: preferredModel('grok-build'), nativeReadAccepted: false, effort: 'medium', approvalMode: rememberedApprovalMode('grok-build') });
+  const [settings, setSettings] = useState(() => {
+    const project = rememberedProject();
+    return { kind: project?.kind === 'project' ? 'project' : 'scratch', projectId: project?.kind === 'project' ? project.projectId : null, projectPath: project?.kind === 'project' ? project.projectPath : '', projectName: project?.kind === 'project' ? project.projectName : '', engine: 'grok-build', model: preferredModel('grok-build'), nativeReadAccepted: false, effort: 'medium', approvalMode: rememberedApprovalMode('grok-build') };
+  });
   const modelPinned = useRef(Boolean(rememberedModel('grok-build')));
+  const projectPinned = useRef(false);
   const [newText, setNewText] = useState('');
   const { catalog: modelCatalog, load: loadEngineModels, connectAntigravity: connectAntigravityAccount } = useWorkbenchModels(status?.engines, status?.agentWorkbenchEnabled);
   const models = modelCatalog[settings.engine]?.models || [];
@@ -172,14 +177,16 @@ export default function AgentWorkbench({ onOpen }) {
     });
   }, [modelCatalog, settings.engine]);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [railOpen, setRailOpen] = useState(false), [detailsOpen, setDetailsOpen] = useState(false), [pendingImages, setPendingImages] = useState([]);
-  const fileInput = useRef(null), scroll = useRef(null), follows = useRef(true), sending = useRef(false), pendingRef = useRef([]);
+  const fileInput = useRef(null), scroll = useRef(null), follows = useRef(true), sending = useRef(false), pendingRef = useRef([]), detailLoad = useRef(0);
   pendingRef.current = pendingImages;
   const editor = useWorkbenchDraft(selected, setError), draft = editor.value?.text || '';
   const textarea = useWorkbenchTextarea(draft);
   const change = value => {
     if (typeof value.model === 'string' && value.model) modelPinned.current = true;
+    if ('kind' in value || 'projectId' in value) projectPinned.current = true;
     setSettings(previous => {
       const next = { ...previous, ...value };
+      if ('kind' in value || 'projectId' in value) rememberProject(next);
       if (typeof value.approvalMode === 'string') rememberApprovalMode(value.engine || previous.engine, value.approvalMode);
       return next;
     });
@@ -199,7 +206,8 @@ export default function AgentWorkbench({ onOpen }) {
     }
     setSettings(previous => {
       const sessionModel = list.sessions.find(session => session.purpose !== 'workflow' && session.engine === previous.engine)?.data?.model || '';
-      const next = { ...previous, model: preferredModel(previous.engine, { current: modelPinned.current || !sessionModel ? previous.model : '', sessionModel, defaultModel: state.engines.find(value => value.id === previous.engine)?.model || '' }) };
+      const project = projectPinned.current ? null : preferredProject(saved.projects, list.sessions);
+      const next = { ...previous, ...(project || {}), model: preferredModel(previous.engine, { current: modelPinned.current || !sessionModel ? previous.model : '', sessionModel, defaultModel: state.engines.find(value => value.id === previous.engine)?.model || '' }) };
       if (!hasRememberedApprovalMode(previous.engine)) {
         const prior = list.sessions.find(session => session.purpose !== 'workflow' && session.engine === previous.engine && ['ask', 'auto', 'allow'].includes(session.policy?.approvalMode));
         if (prior) { rememberApprovalMode(previous.engine, prior.policy.approvalMode); next.approvalMode = prior.policy.approvalMode; }
@@ -236,9 +244,12 @@ export default function AgentWorkbench({ onOpen }) {
     setDetail(null); setEvents([]);
     if (!selected) return;
     let stopped = false;
-    const load = () => request(`${base}/sessions/${selected}`).then(value => {
-      if (!stopped) { applyDetail(value); editor.hydrate(selected, value.draft); }
-    }).catch(error => { if (!stopped) setError(error.message); });
+    const load = () => {
+      const token = ++detailLoad.current;
+      return request(`${base}/sessions/${selected}`).then(value => {
+        if (!stopped && token === detailLoad.current) { applyDetail(value); editor.hydrate(selected, value.draft); }
+      }).catch(error => { if (!stopped && token === detailLoad.current) setError(error.message); });
+    };
     load(); const timer = setInterval(load, 1000);
     const stream = new EventSource(apiUrl(`${base}/sessions/${selected}/events?after=0`));
     stream.onmessage = event => { try { const item = JSON.parse(event.data); if (!stopped) { setEvents(previous => previous.some(e => e.seq === item.seq) ? previous : [...previous, item]); if (item.type === 'turn.finished') void load(); } } catch { if (!stopped) setError('事件格式无效，请刷新会话'); } };
@@ -334,7 +345,12 @@ export default function AgentWorkbench({ onOpen }) {
     });
   }
   const current = detail?.turns.find(turn => active(turn.state));
-  const reloadDetail = async () => { const value = await request(`${base}/sessions/${selected}`); applyDetail(value); return value; };
+  const reloadDetail = async () => {
+    const token = ++detailLoad.current;
+    const value = await request(`${base}/sessions/${selected}`);
+    if (token === detailLoad.current) applyDetail(value);
+    return value;
+  };
   // Grok forwards image blocks even though its ACP flag says otherwise; other
   // engines that reported no image input must not get a turn that fails later.
   const imagesUnsupported = Boolean(detail && detail.session.engine !== 'grok-build' && detail.session.capabilities?.images === false);
@@ -361,9 +377,9 @@ export default function AgentWorkbench({ onOpen }) {
     setOpenProjects(current => { if (current.has(id)) return current; const next = new Set(current).add(id); writeStoredSet(OPEN_PROJECTS_KEY, next); return next; });
   }, [detail?.session?.id]);
   const chats = sessions.filter(session => session.purpose !== 'workflow');
-  return <main className="wiki-main workbench-page" data-c-surface="workbench">
+  return <main aria-label="Agent 工作台" className="wiki-main workbench-page" data-c-surface="workbench">
     {error && <p role="alert" className="workbench-error">{error}</p>}
-    {/* Same AgentShell as Agent 对话 and AionUi: sessions left, timeline centre, session panel right (always). */}
+    {/* Same AgentShell as AionUi: sessions left, timeline centre, session panel right (always). */}
     <AgentShell className={`workbench-layout${railOpen ? " rail-open" : ""}`} resourcesOpen={detailsOpen} sessionsClassName="workbench-sessions" sessionsLabel="工作台会话"
       resourcesClassName="workbench-inspector" resourcesLabel="会话详情"
       header={<>
@@ -401,7 +417,7 @@ export default function AgentWorkbench({ onOpen }) {
           <div className="workbench-session-grid">
             <div className="workbench-chat-column">
               <div className="workbench-scroll" ref={scroll} onScroll={event => { const el = event.currentTarget; follows.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
-                {detail.session.data.provenance && <p className="workbench-muted">已转换上下文，使用新的原生会话。最近最多 20 轮摘录会在首次发送时作为参考；原历史、分支、附件和来源继续保留。{detail.session.data.provenance.sessionId && <a href={`#agent?session=${detail.session.data.provenance.sessionId}`}>查看旧会话</a>}</p>}
+                {!!detail.session.data.wikiSources?.length && <div className="workbench-wiki-sources" role="group" aria-label="引用资料"><span>引用资料</span>{detail.session.data.wikiSources.map(source => <button type="button" key={source.id} title={source.label} onClick={() => onOpen(source.id)}>{source.label}</button>)}</div>}
                 {!detail.turns.length && <div className="workbench-chat-empty"><h3>准备好了</h3><p>在下方输入任务，开始这个会话。</p></div>}
                 <Timeline turns={detail.turns} events={events} artifacts={detail.artifacts || []} sessionId={selected} renderResults={turn => <WorkbenchResults onOpen={onOpen} turnId={turn.id} detail={detail} busy={busy} act={action} refresh={reloadDetail} attach={id => { const attachments = editor.value?.attachments || []; if (!attachments.includes(id) && attachments.length < 8) editor.update({ attachments: [...attachments, id], text: draft || '请分析这些产物，并继续任务。' }); }} />} />
                 {detail.approvals.map(approval => <Approval key={approval.id} approval={approval} busy={busy} decide={(a, decision) => action(async () => { await post(`/approvals/${a.id}/decision`, { decision, operationHash: a.operationHash, revision: a.policyRevision }); await reloadDetail(); })} />)}
@@ -420,7 +436,7 @@ export default function AgentWorkbench({ onOpen }) {
                   <button type="button" className="icon-only" aria-label="添加参考图" title={imagesUnsupported ? '此引擎未声明支持图片输入' : '添加参考图'} disabled={busy || imagesUnsupported || !editor.value || (editor.value?.attachments.length || 0) >= maxWorkbenchImages} onClick={() => fileInput.current?.click()}><Plus size={19} /></button>
                   <span className="workbench-project-chip" title={detail.workspace.path}><FolderOpen size={15} /><span>{projectLabel(detail.workspace)}</span></span>
                   <span className="workbench-machine"><Monitor size={14} />此计算机</span>
-                  {!detail.session.data.restricted && detail.session.purpose !== 'workflow' && <WorkbenchApprovalPicker mode={detail.session.policy.approvalMode} engine={detail.session.engine} disabled={busy || !!current} onChange={mode => action(async () => { const saved = await request(`${base}/sessions/${selected}/policy`, { method: 'PUT', body: JSON.stringify({ revision: detail.session.revision, approvalMode: mode }) }); rememberApprovalMode(saved.engine, saved.policy?.approvalMode); setDetail(current => current?.session.id === saved.id ? { ...current, session: saved } : current); setSessions(current => current.map(item => item.id === saved.id ? saved : item)); await reloadDetail(); })} />}
+                  {!detail.session.data.restricted && detail.session.purpose !== 'workflow' && <WorkbenchApprovalPicker mode={detail.session.policy.approvalMode} engine={detail.session.engine} disabled={busy} deferred={!!current} onChange={mode => action(async () => { const saved = await request(`${base}/sessions/${selected}/policy`, { method: 'PUT', body: JSON.stringify({ revision: detail.session.revision, approvalMode: mode }) }); rememberApprovalMode(saved.engine, saved.policy?.approvalMode); detailLoad.current += 1; setDetail(current => current?.session.id === saved.id ? { ...current, session: saved } : current); setSessions(current => current.map(item => item.id === saved.id ? saved : item)); await reloadDetail(); })} />}
                   <WorkbenchModelPicker engine={detail.session.engine} model={detail.session.data.model} effort={detail.session.data.effort} engines={status.engines} models={modelCatalog[detail.session.engine]?.models || []} modelState={modelCatalog[detail.session.engine]} retryModels={() => loadEngineModels(detail.session.engine, true)} busy={busy} change={changeSessionModel} loadModels={loadSessionModels} connectAntigravity={connectAntigravity} />
                   <span className="workbench-draft-state" data-saved={editor.value?.saved === editor.value?.edit ? "true" : "false"}>{current ? labels[current.state] : ""}</span>
                   {current ? <Button variant="primary" aria-label="停止" title="停止" disabled={busy || current.state === 'cancelling'} onClick={stop} className="icon-only"><Square size={14} fill="currentColor" /></Button> : <Button variant="primary" type="submit" aria-label="发送" title="发送" disabled={busy || !editor.value || !draft.trim()} className="icon-only"><ArrowUp size={19} /></Button>}

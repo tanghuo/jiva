@@ -48,8 +48,8 @@ export default function SourceReference({ id, label, onReference, disabled, chil
     event.preventDefault(); event.stopPropagation(); setMenu({ x: event.clientX, y: event.clientY });
   }}>
     {children}
-    {showButton && <button className="text-button source-reference-add" disabled={disabled || busy} title="引用到对话" aria-label={label ? `引用到对话：${label}` : "引用到对话"} onClick={reference}><Plus size={13} />{busy ? "正在引用…" : "引用到对话"}</button>}
-    {menu && <span ref={menuRef} className="menu-panel source-reference-menu" role="menu" aria-label="资料引用菜单" style={{ left: menu.x, top: menu.y }}><button role="menuitem" disabled={disabled || busy} onClick={reference}>引用到对话</button></span>}
+    {showButton && <button className="text-button source-reference-add" disabled={disabled || busy} title="放进资料篮" aria-label={label ? `放进资料篮：${label}` : "放进资料篮"} onClick={reference}><Plus size={13} />{busy ? "正在引用…" : "放进资料篮"}</button>}
+    {menu && <span ref={menuRef} className="menu-panel source-reference-menu" role="menu" aria-label="资料引用菜单" style={{ left: menu.x, top: menu.y }}><button role="menuitem" disabled={disabled || busy} onClick={reference}>放进资料篮</button></span>}
     {error && <span className="wiki-error" role="alert">引用失败：{error}</span>}
   </span>;
 }

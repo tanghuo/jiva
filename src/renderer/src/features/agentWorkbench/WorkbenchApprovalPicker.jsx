@@ -4,18 +4,32 @@ import { approvalModes } from '../../../../shared/domain/agentWorkbench/approval
 
 const icons = { ask: Hand, auto: ShieldCheck, allow: TriangleAlert };
 const descriptions = {
-  ask: '修改文件或运行命令时始终询问',
-  auto: '仅对 Grok 判定为风险的操作请求批准',
-  allow: '自动执行范围内的文件修改和命令',
+  'antigravity-acp': {
+    ask: '原生操作请求逐次审批',
+    auto: '自动批准文件编辑和项目内已识别的只读命令（如 git status）；其他命令仍需确认',
+    allow: 'Antigravity 自动执行文件编辑和命令，使用当前用户权限',
+  },
+  'grok-build': {
+    ask: '修改文件或运行命令时始终询问',
+    auto: '仅对 Grok 判定为风险的操作请求批准',
+    allow: '自动执行范围内的文件修改和命令',
+  },
+  'codex-cli': {
+    ask: '写入和命令都会询问',
+    auto: '工作区内可直接修改，越界或危险操作仍会询问',
+    allow: '自动执行工作区内的文件修改和命令',
+  },
 };
 
-export default function WorkbenchApprovalPicker({ mode = 'ask', engine, disabled, onChange }) {
+export default function WorkbenchApprovalPicker({ mode = 'ask', engine, disabled, deferred = false, onChange }) {
   const [open, setOpen] = useState(false), [position, setPosition] = useState({});
   const root = useRef(null), popup = useRef(null), trigger = useRef(null);
   const current = approvalModes.find(value => value.id === mode) || approvalModes[0];
   const Icon = icons[current.id] || ShieldCheck;
-  const locked = disabled || engine !== 'grok-build';
-  const options = approvalModes.filter(value => engine === 'grok-build' || value.id === 'ask');
+  const copy = descriptions[engine] || descriptions['grok-build'];
+  const switchable = ['grok-build', 'codex-cli', 'antigravity-acp'].includes(engine);
+  const locked = disabled || !switchable;
+  const options = approvalModes.filter(value => switchable || value.id === 'ask');
   function close(focus = false) { setOpen(false); if (focus) trigger.current?.focus(); }
   function show(event) {
     if (locked) return;
@@ -48,7 +62,7 @@ export default function WorkbenchApprovalPicker({ mode = 'ask', engine, disabled
       buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
     }
   }}>
-    <button type="button" ref={trigger} className="workbench-approval-trigger" data-mode={current.id} aria-label="审批模式" aria-haspopup="dialog" aria-expanded={open} disabled={locked} title={descriptions[current.id]} onClick={show}>
+    <button type="button" ref={trigger} className="workbench-approval-trigger" data-mode={current.id} aria-label="审批模式" aria-haspopup="dialog" aria-expanded={open} disabled={locked} title={deferred ? `${copy[current.id]}。下一轮生效` : copy[current.id]} onClick={show}>
       <Icon size={15} /><span>{current.label}</span>
     </button>
     {open && <div ref={popup} tabIndex={-1} className="workbench-approval-popover" style={position} role="dialog" aria-label="选择审批模式">
@@ -57,7 +71,7 @@ export default function WorkbenchApprovalPicker({ mode = 'ask', engine, disabled
         const OptionIcon = icons[value.id];
         return <button type="button" className="workbench-approval-option" data-mode={value.id} key={value.id} aria-label={value.label} aria-pressed={mode === value.id} onClick={() => { if (value.id !== mode) onChange(value.id); close(true); }}>
           <OptionIcon size={18} />
-          <span><strong>{value.label}</strong><small>{descriptions[value.id]}</small></span>
+          <span><strong>{value.label}</strong><small>{copy[value.id]}</small></span>
           {mode === value.id ? <Check size={16} /> : <span className="workbench-approval-check" aria-hidden="true" />}
         </button>;
       })}

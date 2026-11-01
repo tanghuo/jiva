@@ -63,6 +63,8 @@
 .workbench-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--sp-4); scrollbar-gutter: stable; }
 .workbench-scroll > * { max-width: 840px; margin-inline: auto; }
 .workbench-chat-empty { padding: var(--sp-6) var(--sp-2); color: var(--muted); }
+.workbench-wiki-sources { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2); color: var(--muted); }
+.workbench-wiki-sources button { max-width: 240px; min-height: var(--h-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workbench-inspector { min-width: 0; overflow-y: auto; padding: var(--sp-4); border-left: 1px solid var(--line); }
 .workbench-inspector .workbench-actions { flex-wrap: wrap; }
 .workbench-inspector .workbench-artifacts { grid-template-columns: minmax(0, 1fr); }

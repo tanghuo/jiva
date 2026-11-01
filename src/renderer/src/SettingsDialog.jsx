@@ -5,6 +5,7 @@ import OrganizationPanel from "./OrganizationPanel.jsx";
 import VocabularySettings from "./VocabularySettings.jsx";
 import VideoAnalysisSettings from "./VideoAnalysisSettings.jsx";
 import ElementUsagePanel from "./ElementUsagePanel.jsx";
+import { QuotaAppearanceSettings, QuotaSourceSettings } from './QuotaSettings.jsx';
 import { ConfirmDialog, DialogFrame, SaveBar } from "./ui/index.js";
 
 // Sections whose changes wait for an explicit save. 外观 / 浏览偏好 and 词表 apply immediately, so they get no save bar.
@@ -105,6 +106,7 @@ export default function SettingsDialog({ theme, onThemeChange, atmosphere = "ful
             </label>)}
           </div>
         </fieldset>
+        <QuotaAppearanceSettings />
         <fieldset className="atmosphere-picker">
           <legend>氛围色</legend>
           <label className="theme-option" style={{display:"flex",gap:"10px",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",marginTop:"8px"}}>
@@ -129,7 +131,7 @@ export default function SettingsDialog({ theme, onThemeChange, atmosphere = "ful
       </div>
       {activeSection === "general" && <details className="element-usage-entry wiki-muted"><summary>本地记录</summary><button className="text-button" onClick={() => setElementUsageOpen(true)}>查看内容使用统计</button></details>}
       <div id="settings-sharing" hidden={activeSection !== "sharing"}><LanSharingSettings onBusyChange={setSharingBusy} onDirtyChange={setSharingDirty} registerSave={registerSharing} /></div>
-      <div id="settings-agent-connect" hidden={activeSection !== "agent-connect"}><OrganizationPanel mode="settings" focus="connection" onBusyChange={setOrganizationBusy} onDirtyChange={setConnectDirty} registerSave={registerConnect} /></div>
+      <div id="settings-agent-connect" hidden={activeSection !== "agent-connect"}><OrganizationPanel mode="settings" focus="connection" onBusyChange={setOrganizationBusy} onDirtyChange={setConnectDirty} registerSave={registerConnect} />{activeSection==='agent-connect'&&<QuotaSourceSettings/>}</div>
       <div id="settings-agent-org" hidden={activeSection !== "agent-org"}><OrganizationPanel mode="settings" focus="organization" onBusyChange={setOrganizationBusy} onDirtyChange={setOrganizationDirty} registerSave={registerOrganization} onChanged={onChanged} /></div>
       <div id="settings-video" hidden={activeSection !== "video"}>{videoOpened && <VideoAnalysisSettings onBusyChange={setVideoBusy} onDirtyChange={setVideoDirty} registerSave={registerVideo} onChanged={onChanged} />}</div>
       {activeSection === "vocabulary" && <div id="settings-vocabulary"><VocabularySettings onChanged={onChanged} onBusyChange={setVocabularyBusy} /></div>}

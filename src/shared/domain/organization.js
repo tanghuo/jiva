@@ -2,7 +2,7 @@ import { elementError, elementId, elementTags, relationName, relationSemantics }
 import { defaultEmbeddingConfig, embeddingConfig } from "./embedding.js";
 import { defaultImageGenerationConfig, imageGenerationConfig } from "./imageGeneration.js";
 import { isNetworkPath, validExecutable } from "./executablePath.js";
-import { defaultChatEngineConfig, chatEngineConfig } from "./chatEngine.js";
+import { defaultWorkbenchConnectionConfig, workbenchConnectionConfig } from "./agentWorkbench/connection.js";
 
 export function defaultGrokExecutorConfig() {
   return { executable: "grok", model: "grok-4.7" };
@@ -12,7 +12,7 @@ export function defaultOrganizationConfig() {
   return { schemaVersion: 1, enabled: false, applyMode: "suggest", executor: {
     type: "codex-cli", timeoutMs: 180000, codexCli: { executable: "codex", codexHome: null, model: null },
     grokBuild: defaultGrokExecutorConfig(),
-  }, embedding: defaultEmbeddingConfig(), imageGeneration: defaultImageGenerationConfig(), chat: defaultChatEngineConfig() };
+  }, embedding: defaultEmbeddingConfig(), imageGeneration: defaultImageGenerationConfig(), chat: defaultWorkbenchConnectionConfig() };
 }
 
 function grokExecutorConfig(value = defaultGrokExecutorConfig()) {
@@ -44,7 +44,7 @@ export function organizationConfig(value) {
       !(allowShell === undefined || typeof allowShell === "boolean")) {
     throw elementError("请检查自动整理版本、模式、执行器与 Codex 目录路径（须为本机路径，不支持 \\\\服务器 网络路径）、模型及超时（1000–1800000 毫秒）");
   }
-  const normalized = { ...structuredClone(value), embedding: embeddingConfig(value.embedding === undefined ? defaultEmbeddingConfig() : value.embedding), imageGeneration: imageGenerationConfig(value.imageGeneration), chat: chatEngineConfig(value.chat) };
+  const normalized = { ...structuredClone(value), embedding: embeddingConfig(value.embedding === undefined ? defaultEmbeddingConfig() : value.embedding), imageGeneration: imageGenerationConfig(value.imageGeneration), chat: workbenchConnectionConfig(value.chat) };
   normalized.executor = { ...normalized.executor, grokBuild };
   return normalized;
 }

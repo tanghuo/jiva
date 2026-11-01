@@ -1,3 +1,4 @@
+import { stubWorkbenchModels } from '../helpers/workbenchModels.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -28,6 +29,7 @@ async function setup(t) {
   });
   browser = await chromium.launch({ executablePath: browserPath, headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await stubWorkbenchModels(page);
   page.setDefaultTimeout(10000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
   t.after(() => assert.deepEqual(errors, []));
@@ -40,16 +42,16 @@ async function setup(t) {
 }
 
 async function openAgent(page) {
-  const link = page.getByRole('link', { name: 'Agent 对话', exact: true });
+  const link = page.getByRole('link', { name: 'Agent 工作台', exact: true });
   // A late detail refresh may briefly guard navigation after the earlier read
   // finished. Retry the harmless link click only when it was actually guarded.
   for (let attempt = 0; attempt < 3; attempt++) {
     await page.waitForFunction(() => document.querySelector('.wiki-agent-entry')?.getAttribute('aria-disabled') === 'false');
     await link.click();
-    try { await page.waitForURL(url => url.hash.startsWith('#agent'), { timeout: 750 }); break; }
+    try { await page.waitForURL(url => url.hash.startsWith('#workbench'), { timeout: 750 }); break; }
     catch (error) { if (attempt === 2) throw error; }
   }
-  await page.getByRole('main', { name: 'Agent 对话', exact: true }).waitFor();
+  await page.getByRole('main', { name: 'Agent 工作台', exact: true }).waitFor();
 }
 
 test("closing unsaved content asks before discarding and preserves failed batch drafts", options, async (t) => {
@@ -111,8 +113,8 @@ test("inactive Wiki does not intercept paste in the Agent workspace", options, a
   const { page, app } = await setup(t);
   await page.goto(app.url + "#wiki");
   await page.waitForFunction(() => document.querySelector(".wiki-agent-entry")?.getAttribute("aria-disabled") === "false");
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
-  await page.getByRole("main", { name: "Agent 对话", exact: true }).waitFor();
+  await page.getByRole("link", { name: "Agent 工作台", exact: true }).click();
+  await page.getByRole("main", { name: "Agent 工作台", exact: true }).waitFor();
   await page.evaluate(() => {
     const data = new DataTransfer(); data.items.add(new File(["test"], "paste.png", { type: "image/png" }));
     window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
@@ -133,8 +135,8 @@ test("canvas selection remains when returning from the Agent workspace", options
   await page.waitForTimeout(300);
   const viewport = await page.locator(".react-flow__viewport").getAttribute("style");
   await page.waitForFunction(() => document.querySelector(".wiki-agent-entry")?.getAttribute("aria-disabled") === "false");
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
-  await page.getByRole("main", { name: "Agent 对话", exact: true }).waitFor();
+  await page.getByRole("link", { name: "Agent 工作台", exact: true }).click();
+  await page.getByRole("main", { name: "Agent 工作台", exact: true }).waitFor();
   await page.getByRole("button", { name: "关系画布", exact: true }).click();
   await page.getByRole("button", { name: "编辑内容", exact: true }).waitFor();
   await page.waitForTimeout(650);
@@ -151,8 +153,8 @@ test("returning to a long detail preserves scroll while its data refreshes", opt
   await page.evaluate(() => window.scrollTo(0, 700));
   await page.waitForFunction(() => window.scrollY === 700);
   await page.waitForFunction(() => document.querySelector(".wiki-agent-entry")?.getAttribute("aria-disabled") === "false");
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
-  await page.getByRole("main", { name: "Agent 对话", exact: true }).waitFor();
+  await page.getByRole("link", { name: "Agent 工作台", exact: true }).click();
+  await page.getByRole("main", { name: "Agent 工作台", exact: true }).waitFor();
   await page.route(`**/api/elements/${element.id}`, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     await route.continue();
@@ -182,8 +184,8 @@ test("late initial relations cannot reset a long detail after restoring its work
   await page.evaluate(() => window.scrollTo(0, 700));
   await page.waitForFunction(() => window.scrollY === 700);
   await page.waitForFunction(() => document.querySelector(".wiki-agent-entry")?.getAttribute("aria-disabled") === "false");
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
-  await page.getByRole("main", { name: "Agent 对话", exact: true }).waitFor();
+  await page.getByRole("link", { name: "Agent 工作台", exact: true }).click();
+  await page.getByRole("main", { name: "Agent 工作台", exact: true }).waitFor();
   await page.getByRole("button", { name: "全部内容", exact: true }).click();
   await page.locator(".wiki-text-document pre").waitFor();
   await page.waitForFunction(() => window.scrollY === 700);

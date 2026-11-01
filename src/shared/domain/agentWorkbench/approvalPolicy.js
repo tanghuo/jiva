@@ -8,6 +8,6 @@ export const approvalModes = Object.freeze([
 
 export function approvalMode(value = 'ask', engine = 'grok-build') {
   if (!approvalModes.some(mode => mode.id === value)) throw agentError('INVALID_POLICY', '无效的审批模式');
-  if (engine !== 'grok-build' && value !== 'ask') throw agentError('UNSUPPORTED_POLICY', '此引擎暂不支持该审批模式');
+  if (!['grok-build', 'codex-cli', 'antigravity-acp'].includes(engine) && value !== 'ask') throw agentError('UNSUPPORTED_POLICY', '此引擎暂不支持该审批模式');
   return value;
 }

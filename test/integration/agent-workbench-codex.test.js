@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { openCodexWorkbench, verifyCodexWorkbenchPolicy } from '../../src/agent/engines/codexWorkbench.js';
+import { openCodexWorkbench, verifyCodexWorkbenchPolicy, codexTurnPolicy } from '../../src/agent/engines/codexWorkbench.js';
 
 test('Codex translates native approval snapshots, output, SDK tools, cancellation and load without replay', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-codex-workbench-fixture-'));
@@ -35,6 +35,14 @@ test('Codex translates native approval snapshots, output, SDK tools, cancellatio
   assert.ok(!events.some(event => event.data.text?.includes('REPLAY')));
   const hanging = resumed.prompt('HANG'); await new Promise(resolve => setTimeout(resolve, 30)); await resumed.cancel();
   assert.equal((await hanging).stopReason, 'cancelled'); await resumed.close();
+});
+test('Codex turn policy follows the session mode and keeps network off', () => {
+  assert.deepEqual(codexTurnPolicy('ask'), { mode: 'ask', approvalPolicy: 'untrusted', approvalsReviewer: 'user', sandboxPolicy: { type: 'readOnly', networkAccess: false } });
+  assert.equal(codexTurnPolicy('auto').approvalPolicy, 'on-request');
+  assert.equal(codexTurnPolicy('auto').sandboxPolicy.networkAccess, false);
+  assert.equal(codexTurnPolicy('allow').approvalPolicy, 'never');
+  assert.equal(codexTurnPolicy('allow').sandboxPolicy.type, 'workspaceWrite');
+  assert.throws(() => codexTurnPolicy('typo'), { code: 'INVALID_POLICY' });
 });
 test('Codex refuses mismatched native policy and silently widened permission settings', () => {
   const policy = { cwd: process.cwd(), approvalPolicy: 'untrusted', approvalsReviewer: 'user', sandbox: { type: 'readOnly', networkAccess: false } };

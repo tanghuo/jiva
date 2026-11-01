@@ -180,10 +180,8 @@ test("video uploads reject bad tags before writing files and cannot become AI re
   const badHeader = await fetch(new URL("api/videos", app.url), { method: "POST", headers: { "x-file-name": "%invalid" }, body: mp4() });
   assert.equal(badHeader.status, 400);
   const video = await (await upload(mp4())).json();
-  const session = await (await api("chat/sessions", {})).json();
-  const result = await api(`chat/sessions/${session.id}/turns`, { requestKey: "video-rejected-request", text: "参考视频", sourceIds: [video.id] });
-  assert.equal(result.status, 400); assert.match((await result.json()).error, /视频暂不支持/);
-  assert.deepEqual((await (await api(`chat/sessions/${session.id}`)).json()).turns, []);
+  const result = await api('agent/wiki-template', { requestKey: 'video-rejected-request', sourceIds: [video.id] });
+  assert.equal(result.status, 400); assert.match((await result.json()).error, /文字或图片/);
 });
 
 test("LAN sharing streams and imports videos through the same content API", async (t) => {

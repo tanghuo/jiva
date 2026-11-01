@@ -27,3 +27,22 @@ test('MCP catalog must resolve fully and excludes all external servers, includin
   assert.equal(verifyWorkbenchMcpCatalog({ servers: [{ name: 'self_wiki', type: 'stdio', command: '', args: [], env: [], session: { enabled: true, status: 'ready' } }], sessionMcpResolved: true }, definition).transport, 'acp');
   for (const name of ['other', 'self_wiki']) assert.throws(() => verifyWorkbenchMcpCatalog({ sessionMcpResolved: true, servers: [{ name, type: 'http', session: { enabled: true } }] }, definition), /其他 MCP/);
 });
+
+test('MCP rejection diagnostics identify mismatches without retaining credentials or unbounded catalogs', () => {
+  const secret = 'SECRET_MUST_NOT_BE_LOGGED';
+  const definition = { name: 'self_wiki', serverId: secret };
+  const server = { name: 'foreign', type: 'stdio', command: secret, args: [secret], env: [{ name: 'TOKEN', value: secret }], url: secret, session: { enabled: true, status: 'ready', tools: [secret], blockedReason: '' } };
+  assert.throws(() => verifyWorkbenchMcpCatalog({ sessionMcpResolved: true, servers: Array(30).fill(server) }, definition), error => {
+    const data = error.mcpDiagnostics;
+    assert.equal(data.reason, 'sdk_server_mismatch');
+    assert.equal(data.expectedName, 'self_wiki');
+    assert.equal(data.serverCount, 30); assert.equal(data.omittedServers, 10);
+    assert.equal(data.servers.length, 20);
+    assert.equal(data.servers[0].nameMatches, false);
+    assert.equal(data.servers[0].commandEmpty, false);
+    assert.equal(data.servers[0].argsCount, 1); assert.equal(data.servers[0].envCount, 1);
+    assert.equal(JSON.stringify(data).includes(secret), false);
+    return true;
+  });
+  assert.throws(() => verifyWorkbenchMcpCatalog({ sessionMcpResolved: false, servers: [] }, definition), error => error.mcpDiagnostics.reason === 'catalog_not_ready');
+});

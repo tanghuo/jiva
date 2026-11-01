@@ -9,7 +9,7 @@ import { createElementService } from "../../src/server/application/elementServic
 import { createOrganizationRepository } from "../../src/server/data/organizationRepository.js";
 import { organizationOutput } from "../../src/shared/domain/organization.js";
 import { relationLabel } from "../../src/shared/domain/elements.js";
-import { createChatRepository } from "../../src/server/data/chatRepository.js";
+import { createWikiSnapshots } from "../../src/server/data/wikiSnapshots.js";
 
 function setup(t) {
   const db = new DatabaseSync(":memory:"); db.exec("PRAGMA foreign_keys=ON"); migrateWiki(db); t.after(() => db.close());
@@ -19,8 +19,8 @@ function setup(t) {
 }
 const semantics = { direction: "forward", reverseName: "被参考" };
 
-test("chat snapshots retain legacy symmetric fingerprints and detect direction-only edits", (t) => {
-  const { db, wiki, a, b } = setup(t), chat = createChatRepository(db);
+test("Wiki snapshots retain legacy symmetric fingerprints and detect direction-only edits", (t) => {
+  const { db, wiki, a, b } = setup(t), chat = createWikiSnapshots(db);
   const r = wiki.relate(a.id, b.id, "related", "参考");
   const version = db.prepare("SELECT content_version FROM elements WHERE id=?").get(a.id).content_version;
   const relations = db.prepare("SELECT id,source_id,target_id,kind,name FROM element_relations WHERE source_id=? OR target_id=? ORDER BY id").all(a.id,a.id);

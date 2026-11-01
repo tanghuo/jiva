@@ -1,3 +1,4 @@
+import { probeImageGeneration } from './imageProbe.js';
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -67,6 +68,7 @@ export async function createOrganizationService({ repo, dataDir, semantic, recor
     initialize(value) { instance = value; if (!configError && (config.enabled || repo.hasPending())) start(); },
     status,
     executionConfig,
+    probeImages: value => probeImageGeneration(config.imageGeneration, dataDir, value),
     revision: () => repo.revision(),
     configure(value) {
       const next = organizationConfig(value);

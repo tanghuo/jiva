@@ -31,7 +31,7 @@ export default function WorkbenchStart({ settings, change, projects, engines, mo
         <Button variant="primary" type="submit" aria-label="发送" title="发送" disabled={!ready} className="icon-only workbench-launch-send"><ArrowUp size={19} /></Button>
       </div>
     </form>
-    {engine === 'codex-cli' && <p className="workbench-muted">发送即确认使用 Codex 原生文件访问：可读取工作目录以外的文件，写入和危险命令按原生审批处理。</p>}
+    {engine === 'codex-cli' && <p className="workbench-muted">发送即确认使用 Codex 原生文件访问：可读取工作目录以外的文件。所选审批模式从这一轮生效，网络访问保持关闭。</p>}
     {engine === 'antigravity-acp' && <p className="workbench-muted">发送即确认使用 Antigravity 已有配置、插件和工具；它以当前用户权限访问文件和执行命令，原生请求在此审批，工作目录不构成系统沙箱。</p>}
   </div>;
 }

@@ -3,8 +3,10 @@ import Dialog from '../../Dialog.jsx';
 import DetailImage from '../../DetailImage.jsx';
 import { apiUrl } from '../../api.js';
 import { Button } from '../../ui/Button.jsx';
+import { useQuotaOcclusion } from '../../quotaOcclusion.js';
 
 export default function WorkflowImagePreview({ images, index, runId, chosen, onChoose, onIndex, onClose, onAccept }) {
+  useQuotaOcclusion(Boolean(images[index]));
   const [error, setError] = useState(''), [dimensions, setDimensions] = useState(null);
   const stage = useRef(null);
   const item = images[index];

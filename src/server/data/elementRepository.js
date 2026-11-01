@@ -1,8 +1,6 @@
 import { relationDirection, storedDirection } from "./relationDirection.js";
 import { elementError, maxElementTags, relationName } from "../../shared/domain/elements.js";
 import { createCanvasRepository } from "./canvasRepository.js";
-import { deleteChatHistory } from "./chatHistoryDeletion.js";
-import { chatPathIds } from "./chatHistory.js";
 import { createVocabularyRepository } from "./vocabularyRepository.js";
 import { createVideoMarkerRepository } from "./videoMarkerRepository.js";
 import { relationRole } from "../../shared/domain/relationRoles.js";
@@ -235,21 +233,6 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
     markers: createVideoMarkerRepository(db, { getElement: get, vocabulary, publicOnly }),
     addTag(id, name) { return transaction(() => { get(id); return addTag(id, name); }); },
     tagAliases: () => vocabulary.tagAliases({ publicOnly }),
-    conversation(id, from) {
-      const element = get(id);
-      if (element.kind !== "session") throw elementError("此元素不是会话");
-      const sessionId = element.record.sessionId;
-      const session = db.prepare("SELECT title,active_turn_id FROM chat_sessions WHERE id=?").get(sessionId);
-      const anchor = from && db.prepare(`SELECT t.id FROM chat_element_bindings b JOIN chat_turns t ON t.id=b.turn_id
-        WHERE b.element_id=? AND t.session_id=? AND t.internal=0 ORDER BY t.id DESC LIMIT 1`).get(from, sessionId);
-      const target = anchor?.id || session?.active_turn_id;
-      const before = chatPathIds(db, sessionId, target).slice(-2).map((id) => db.prepare("SELECT * FROM chat_turns WHERE id=?").get(id));
-      const after = target ? db.prepare("SELECT c.* FROM chat_turns p JOIN chat_turns c ON c.id=p.selected_child_id WHERE p.id=? AND c.session_id=? AND c.internal=0").all(target, sessionId) : [];
-      const rows = [...before, ...after];
-      return { sessionId, title: session?.title || element.body, turnId: target, turns: rows.map((t) => ({ id: t.id,
-        text: t.text.slice(0, 700), answer: t.answer.slice(0, 1000), truncated: t.text.length > 700 || t.answer.length > 1000,
-        images: JSON.parse(t.events).filter((e) => e.artifact).slice(0, 2).map((e) => `/api/chat/turns/${t.id}/artifacts/${e.artifact}`) })) };
-    },
     lifecycle(id) {
       get(id);
       const nodes = new Map(), relations = new Map(), pending = [id];
@@ -519,16 +502,6 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         const row = db.prepare("SELECT deleted_at FROM elements WHERE id = ?").get(id);
         if (!row) return null; // Retrying an already completed deletion is safe.
         if (!row.deleted_at) throw elementError("只能永久删除回收站中的内容", 409);
-        // Only generations that can write this element back into chat history block the purge:
-        // turns citing it, its own saved conversation, and sessions whose output became this element.
-        if (db.prepare(`SELECT 1 FROM chat_turns t WHERE t.state=0 AND (
-            EXISTS (SELECT 1 FROM json_each(t.sources) WHERE json_extract(value,'$.id')=?1)
-            OR EXISTS (SELECT 1 FROM json_each(t.input_sources) WHERE coalesce(json_extract(value,'$.id'),value)=?1)
-            OR t.session_id IN (SELECT session_id FROM chat_session_elements WHERE element_id=?1)
-            OR t.session_id IN (SELECT o.session_id FROM chat_turns o JOIN chat_element_bindings b ON b.turn_id=o.id WHERE b.element_id=?1)
-            OR t.session_id IN (SELECT o.session_id FROM chat_turns o JOIN chat_prompt_jobs j ON o.id IN (j.turn_id,j.extraction_turn_id) WHERE j.element_id=?1)
-          ) LIMIT 1`).get(id)) throw elementError("此内容正被进行中的会话使用，请等待生成结束后再永久删除", 409);
-        deleteChatHistory(db, id);
         const image = db.prepare("SELECT storage_key FROM element_images WHERE element_id = ?").get(id);
         const video = db.prepare("SELECT storage_key FROM element_videos WHERE element_id=?").get(id);
         db.prepare("DELETE FROM element_relations WHERE source_id = ? OR target_id = ?").run(id, id);

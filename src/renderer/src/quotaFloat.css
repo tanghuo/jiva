@@ -1,0 +1,79 @@
+.quota-float { position:fixed; bottom:12px; z-index:80; max-width:calc(100vw - 24px); color:var(--ink); font-size:var(--fs-caption); }
+.quota-left { left:calc(var(--sidebar-w,0px) + 12px); }
+.quota-right { right:12px; bottom:64px; }
+.quota-capsule { height:var(--h-md); max-width:270px; display:flex; align-items:center; gap:8px; padding:0 12px 0 8px; border:1px solid color-mix(in srgb,var(--line-strong) 55%,transparent); border-radius:var(--r-full); background:color-mix(in srgb,var(--panel) 94%,transparent); color:var(--ink); box-shadow:var(--e-2); backdrop-filter:blur(18px); cursor:grab; touch-action:none; user-select:none; font-size:var(--fs-caption); font-weight:500; transition:box-shadow var(--duration-fast),border-color var(--duration-fast); }
+.quota-capsule:hover { border-color:var(--line-strong); box-shadow:var(--e-3); }
+.quota-capsule { max-width:min(270px,calc(100vw - 24px)); }
+.quota-capsule.is-multi { display:flex; flex-direction:column; align-items:stretch; gap:0; width:min(284px,calc(100vw - 24px)); height:auto; min-height:var(--h-md); max-width:none; max-height:calc(100dvh - 24px); padding:0; border-radius:var(--r-md); background:var(--panel); border-color:var(--line); box-shadow:var(--e-2); text-align:left; }
+.quota-capsule.is-multi:hover { background:var(--panel); box-shadow:var(--e-2); border-color:var(--line-strong); }
+.quota-compact-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 10px; border-bottom:1px solid var(--line); color:var(--subtle); font-size:var(--fs-caption); font-weight:400; }
+.quota-compact-heading>span { display:flex; align-items:center; gap:6px; }
+.quota-compact-heading svg.is-open { transform:rotate(180deg); }
+.quota-pinned-items { display:grid; gap:0; width:100%; min-width:0; max-height:calc(100dvh - 70px); padding:4px 10px 6px; overflow-y:auto; overscroll-behavior:contain; }
+.quota-pinned-item { display:grid; grid-template-columns:62px minmax(0,1fr) max-content; align-items:center; column-gap:8px; min-height:26px; line-height:var(--leading-normal); }
+.quota-pinned-item>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; color:var(--muted); }
+.quota-pinned-item .quota-row-provider { color:var(--ink); font-weight:500; }
+.quota-row-window { display:flex; align-items:center; gap:4px; }
+.quota-pinned-item .quota-row-shared { display:inline; color:var(--subtle); font-size:var(--fs-caption); }
+.quota-pinned-item strong { flex-shrink:0; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.quota-pinned-item small { display:block; color:var(--subtle); font-size:var(--fs-caption); font-weight:400; }
+.quota-pinned-item.is-stale>span { color:var(--subtle); }
+.quota-pin-hint { margin:10px 0 0; color:var(--subtle); font-size:var(--fs-caption); line-height:var(--leading-normal); }
+.quota-pin-choice { display:inline-flex; align-items:center; gap:7px; cursor:pointer; }
+.quota-pin-choice input { accent-color:var(--accent); flex-shrink:0; margin:0; }
+.quota-grip { flex-shrink:0; color:var(--subtle); opacity:.65; }
+.quota-capsule-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.quota-status-dot,.quota-partial-dot { width:6px; height:6px; flex-shrink:0; border-radius:var(--r-full); background:var(--good); }
+.quota-partial-dot { background:var(--warn); width:4px; height:4px; }
+.quota-capsule.quota-danger .quota-status-dot { background:var(--bad); }
+.quota-capsule.quota-warning .quota-status-dot { background:var(--warn); }
+.quota-capsule>svg:last-child { color:var(--muted); flex-shrink:0; transition:transform var(--duration-fast); }
+.quota-capsule>svg.is-open { transform:rotate(180deg); }
+.quota-float.is-dragging,.quota-float.is-dragging * { cursor:grabbing!important; }
+.quota-float.is-dragging .quota-capsule { box-shadow:var(--e-3); border-color:var(--accent); }
+.quota-panel { position:absolute; width:min(320px,calc(100vw - 24px)); overflow:auto; overscroll-behavior:contain; border:1px solid var(--line); border-radius:var(--r-xl); background:var(--panel); box-shadow:var(--e-3); padding:0 16px; scrollbar-width:thin; }
+.quota-panel.opens-up { bottom:calc(100% + 10px); }
+.quota-panel.opens-down { top:calc(100% + 10px); }
+.quota-panel-heading { position:sticky; top:0; z-index:1; margin:0 -16px; padding:12px 16px; background:var(--panel); border-bottom:1px solid var(--line); }
+.quota-panel-heading,.quota-panel-heading>span,.quota-panel-heading>div,.quota-source header,.quota-source header strong,.quota-bucket>div,.quota-panel-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.quota-panel-heading>span { justify-content:flex-start; font-size:var(--fs-small); }
+.quota-panel-heading>span>svg { color:var(--muted); }
+.quota-panel-heading>div { gap:2px; }
+.quota-panel .quota-icon-button { display:grid; place-items:center; width:var(--h-sm); height:var(--h-sm); min-height:var(--h-sm); padding:0; border:0; border-radius:var(--r-sm); background:transparent; color:var(--muted); box-shadow:none; }
+.quota-panel .quota-icon-button:hover { background:var(--hover); color:var(--ink); }
+.quota-panel .quota-drag-handle { cursor:grab; touch-action:none; }
+.quota-source { padding:14px 0; border-bottom:1px solid var(--line); }
+.quota-source:last-of-type { border-bottom:0; }
+.quota-source header { margin-bottom:6px; }
+.quota-source header strong { justify-content:flex-start; font-size:var(--fs-small); font-weight:600; }
+.quota-provider-mark { display:grid; place-items:center; width:22px; height:22px; border-radius:var(--r-sm); background:var(--accent-soft); color:var(--accent); font-size:var(--fs-caption); font-weight:600; }
+.quota-provider-mark[data-provider="grok"] { color:var(--ink); background:var(--hover); }
+.quota-provider-mark[data-provider="gemini"] { color:var(--info); background:color-mix(in srgb,var(--info) 10%,var(--panel)); }
+.quota-source button,.quota-panel-footer button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:var(--h-sm); padding:0 8px; border:0; border-radius:var(--r-sm); background:transparent; box-shadow:none; color:var(--muted); font-size:var(--fs-caption); cursor:pointer; }
+.quota-source button:hover,.quota-panel-footer button:hover { background:var(--hover); color:var(--ink); }
+.quota-source p { margin:8px 0; line-height:var(--leading-normal); }
+.quota-source small { display:block; color:var(--subtle); font-size:var(--fs-caption); line-height:var(--leading-normal); }
+.quota-source>small:first-of-type { margin-bottom:12px; }
+.quota-source>small:last-child { margin-top:12px; }
+.quota-bucket { margin:12px 0; }
+.quota-bucket>div { align-items:baseline; line-height:var(--leading-normal); }
+.quota-bucket>div>span { color:var(--muted); }
+.quota-bucket strong { white-space:nowrap; font-variant-numeric:tabular-nums; font-size:var(--fs-small); font-weight:600; }
+.quota-bucket progress { appearance:none; display:block; width:100%; height:4px; margin:7px 0; overflow:hidden; border:0; border-radius:var(--r-full); background:var(--hover); accent-color:var(--accent); }
+.quota-bucket progress::-webkit-progress-bar { background:var(--hover); border-radius:var(--r-full); }
+.quota-bucket progress::-webkit-progress-value { background:var(--accent); border-radius:var(--r-full); }
+.quota-bucket progress::-moz-progress-bar { background:var(--accent); border-radius:var(--r-full); }
+.quota-bucket[data-level="danger"] progress { accent-color:var(--bad); }
+.quota-bucket[data-level="warning"] progress { accent-color:var(--warn); }
+.quota-bucket[data-level="danger"] progress::-webkit-progress-value { background:var(--bad); }
+.quota-bucket[data-level="warning"] progress::-webkit-progress-value { background:var(--warn); }
+.quota-bucket.is-stale progress { opacity:.4; }
+.quota-danger { color:var(--bad)!important; }
+.quota-warning { color:var(--warn)!important; }
+.quota-panel-footer { position:sticky; bottom:0; margin:0 -16px; padding:10px 16px; border-top:1px solid var(--line); background:var(--panel); color:var(--subtle); }
+.quota-settings { display:grid; gap:10px; }
+.quota-settings label { display:flex; align-items:center; gap:8px; }
+.quota-settings button { min-height:var(--h-sm); }
+.quota-settings input[type=text] { width:100%; }
+@media(max-width:720px) { .quota-left { left:12px; } .quota-float { bottom:72px; } }
+

@@ -69,4 +69,37 @@ test('Grok workbench sends pasted images although ACP initialize omits promptCap
   assert.deepEqual((await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line)), [['image/jpeg']]);
   await new Promise(resolve => setTimeout(resolve, 50));
   assert.ok(events.some(event => event.type === 'message.delta' && event.data.text === 'images:1'));
+  await t.test('a rejected MCP catalog emits a diagnostic event before any prompt is sent', async () => {
+    await engine.close();
+    await writeFile(executable, fakeGrok(home, log).replace('sessionMcpResolved: true, servers: []', "sessionMcpResolved: true, servers: [{ name: 'foreign', type: 'http', url: 'https://secret.invalid/?token=DO_NOT_LOG', session: { enabled: true, status: 'ready' } }]"));
+    const failures = [];
+    await assert.rejects(openGrokWorkbench({ executable, model: 'grok-fixture' }, {
+      cwd, neutralCwd: neutral, onRequest: async () => { throw new Error('unexpected'); }, onExit() {},
+      onEvent: async (type, data) => { failures.push({ type, data }); },
+    }), /其他 MCP/);
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].type, 'engine.extension');
+    assert.equal(failures[0].data.type, 'mcp.verification_failed');
+    assert.equal(failures[0].data.phase, 'connect');
+    assert.equal(failures[0].data.sessionOperation, 'new');
+    assert.equal(failures[0].data.diagnostics.reason, 'unexpected_servers_without_tools');
+    assert.equal(JSON.stringify(failures).includes('DO_NOT_LOG'), false);
+    assert.equal((await readFile(log, 'utf8')).trim().split('\n').length, 1);
+  });
+  await t.test('a catalog change before prompting is logged without delivering the message', async () => {
+    await writeFile(executable, fakeGrok(home, log)
+      .replace("let buffer = '', model = '', effort = '';", "let buffer = '', model = '', effort = '', catalogReads = 0;")
+      .replace('sessionMcpResolved: true, servers: []', "sessionMcpResolved: true, servers: ++catalogReads > 1 ? [{ name: 'foreign', session: { enabled: true } }] : []"));
+    const failures = [], attempted = [];
+    engine = await openGrokWorkbench({ executable, model: 'grok-fixture' }, {
+      cwd, neutralCwd: neutral, onRequest: async () => { throw new Error('unexpected'); }, onExit() {},
+      onEvent: async (type, data) => { if (data.type === 'mcp.verification_failed') failures.push(data); },
+    });
+    await assert.rejects(engine.prompt('must not send', value => attempted.push(value)), /其他 MCP/);
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].phase, 'before_prompt');
+    assert.equal(failures[0].sessionId, engine.sessionId);
+    assert.deepEqual(attempted, []);
+    assert.equal((await readFile(log, 'utf8')).trim().split('\n').length, 1);
+  });
 });
