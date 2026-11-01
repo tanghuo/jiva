@@ -32,6 +32,7 @@ test("temporary share UI creates scoped links, downloads on mobile without pairi
   page.on("pageerror", (failure) => errors.push(failure.message));
   await page.addInitScript(() => Object.defineProperty(navigator, "clipboard", { value: { writeText: async (text) => { window.copiedText = text; } } }));
   await page.goto(app.url);
+  await page.getByRole("complementary", { name: "内容导航" }).getByRole("button", { name: "更多", exact: true }).click();
   await page.getByRole("link", { name: "临时分享", exact: true }).click();
   await page.getByRole("heading", { name: "临时分享", exact: true }).waitFor();
   const sourcePath = path.join(dir, "中文文件.txt");

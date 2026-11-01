@@ -19,13 +19,14 @@ export default function WikiSidebar({
 }) {
   const local = !['read-only', 'lan-edit'].includes(document.querySelector('meta[name="wiki-access"]')?.content);
   const [utilitiesOpen, setUtilitiesOpen] = useState(false);
-  const moreActive = activeTab === "aionui";
+  const moreActive = activeTab === "aionui" || activeTab === "shares";
   const [moreOpen, setMoreOpen] = useState(moreActive);
   const nav = useRef(null);
   // On phones the navigation is one scrolling row; keep the current page in view.
   useEffect(() => { nav.current?.querySelector("[aria-current='page']")?.scrollIntoView?.({ block: "nearest", inline: "nearest" }); }, [activeTab]);
   const guard = (event) => { if (busy) event.preventDefault(); };
   const sectionButton = ({ key, label, icon: Icon }) => <button key={key} className={`nav-item ${activeTab === key ? "active" : ""}`} onClick={() => onChooseTab(key)} disabled={busy} aria-current={activeTab === key ? "page" : undefined}><Icon size={18} /><span>{label}</span></button>;
+  const shareEntry = <a className={`nav-item wiki-share-entry ${activeTab === "shares" ? "active" : ""}`} href="#shares" aria-current={activeTab === "shares" ? "page" : undefined} onClick={guard}><Share2 size={18} /><span>临时分享</span></a>;
   const contentKeys = new Set(wikiSections.map((section) => section.key));
   const contentFading = spaceSwitching && contentKeys.has(activeTab);
   return <aside className="wiki-sidebar" aria-label="内容导航" data-utilities-open={utilitiesOpen} data-space-switching={spaceSwitching || undefined}>
@@ -39,14 +40,14 @@ export default function WikiSidebar({
         {contentSections.map(sectionButton)}
         <div className="wiki-sidebar-heading">工具</div>
         {!readOnly && local && <a className={`nav-item wiki-share-entry ${activeTab === 'workflow' ? 'active' : ''}`} href="#workflow" aria-current={activeTab === 'workflow' ? 'page' : undefined} onClick={guard}><Workflow size={18} /><span>工作流</span></a>}
-        <a className={`nav-item wiki-share-entry ${activeTab === "shares" ? "active" : ""}`} href="#shares" aria-current={activeTab === "shares" ? "page" : undefined} onClick={guard}><Share2 size={18} /><span>临时分享</span></a>
-        {/* One Agent entry above; experimental surfaces are secondary and live under 更多. */}
-        {!readOnly && local && <div className="wiki-sidebar-more">
+        {/* Occasional tools sit under 更多 on this machine. LAN guests keep a direct entry. */}
+        {!readOnly && local ? <div className="wiki-sidebar-more">
           <button type="button" className={`nav-item wiki-sidebar-more-toggle ${moreActive && !moreOpen ? "active" : ""}`} aria-expanded={moreOpen} aria-controls="wiki-sidebar-more-items" onClick={() => setMoreOpen((current) => !current)}><MoreHorizontal size={18} /><span>更多</span><ChevronDown size={15} className="wiki-sidebar-more-chevron" aria-hidden="true" /></button>
           <div id="wiki-sidebar-more-items" className="wiki-sidebar-more-items" hidden={!moreOpen}>
+            {shareEntry}
             <a className={`nav-item ${activeTab === 'aionui' ? 'active' : ''}`} href="#aionui" aria-current={activeTab === 'aionui' ? 'page' : undefined} onClick={guard}><FlaskConical size={18} /><span>AionUi 实验版</span></a>
           </div>
-        </div>}
+        </div> : shareEntry}
         {!readOnly && <div className="wiki-sidebar-bottom">{sectionButton(wikiSections.at(-1))}</div>}
       </div>
     </nav>
