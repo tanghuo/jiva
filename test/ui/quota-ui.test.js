@@ -25,9 +25,11 @@ test('quota defaults off, supports settings detection, keyboard focus, positions
   await page.getByRole('checkbox',{name:/^Grok Build · 预付余额 常驻浮动条$/}).check();assert.match(await capsule.innerText(),/25 美分/);await page.getByRole('checkbox',{name:/^Grok Build · 预付余额 常驻浮动条$/}).uncheck();
   await page.keyboard.press('Escape');assert.equal(await capsule.locator('.quota-pinned-item').count(),3);assert.match(await capsule.innerText(),/88%/);assert.match(await capsule.innerText(),/94%/);assert.match(await capsule.innerText(),/79%/);
   assert.equal(await capsule.locator('.quota-compact-heading').count(),0,'multi collapsed must not show compact heading');
-  assert.match(await capsule.innerText(),/Codex周|Codex 5h|Grok周/);
-  assert.ok(await capsule.locator('.quota-pinned-item').first().evaluate(el=>parseFloat(getComputedStyle(el).borderTopLeftRadius)>=14),'multi pins use pill radius');
-  assert.ok(await capsule.evaluate(el=>getComputedStyle(el).backgroundColor==='rgba(0, 0, 0, 0)'||getComputedStyle(el).backgroundColor==='transparent'),'multi shell stays frameless');
+  assert.deepEqual(await capsule.locator('.quota-pill-window').allInnerTexts(),['周','5h','周'],'window column shows short labels');
+  assert.equal(await capsule.locator('.quota-pinned-item.is-continued').count(),1,'same platform rows are grouped');
+  assert.ok(await capsule.evaluate(el=>getComputedStyle(el).backgroundColor!=='rgba(0, 0, 0, 0)'),'multi pins share one card');
+  assert.match(await capsule.locator('.quota-pinned-item').first().getAttribute('title'),/剩 88%.*后重置/,'hover shows remaining and reset time');
+  const trackEdges=await capsule.locator('.quota-pill-track').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().left));assert.ok(Math.max(...trackEdges)-Math.min(...trackEdges)<1,'bars share one column');
   assert.equal(await capsule.locator('.quota-pill-fill').count(),3);
   const valueEdges=await capsule.locator('.quota-pinned-item strong').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().right));assert.ok(Math.max(...valueEdges)-Math.min(...valueEdges)<1,'remaining values share a right-aligned column');
   await page.locator('.quota-float').screenshot({path:'.local/quota-implementation/quota-pinned-preview.png'});
