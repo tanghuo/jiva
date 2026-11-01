@@ -1,0 +1,7 @@
+.page-error-content { display: grid; justify-items: start; gap: var(--sp-4); max-width: 720px; }
+.page-error-content > p { margin: 0; }
+.page-error-hint { color: var(--muted); font-size: var(--fs-small); }
+.page-error-content > details { width: 100%; min-width: 0; }
+.page-error-content summary { cursor: pointer; color: var(--muted); }
+.page-error-content pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-small); }
+.page-error { min-height: 0; overflow: auto; }

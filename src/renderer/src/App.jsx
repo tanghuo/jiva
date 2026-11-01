@@ -16,6 +16,7 @@ import TemporaryShares from "./TemporaryShares.jsx";
 import { request } from "./api.js";
 import useQuota from './useQuota.js';
 import QuotaFloat from './QuotaFloat.jsx';
+import PageErrorBoundary from './PageErrorBoundary.jsx';
 import { useQuotaPreferences } from './quotaPreferences.js';
 import "./wiki.css";
 import "./surfaces.css";
@@ -30,7 +31,7 @@ const lanGuest = readOnly || access === "lan-edit";
 const WorkflowApp = lazy(() => import('./features/workflow/WorkflowApp.jsx'));
 const AgentWorkbench = lazy(() => import('./features/agentWorkbench/AgentWorkbench.jsx'));
 const AionuiExperiment = lazy(() => import('./features/aionui/AionuiExperiment.jsx'));
-// Empty hash opens the library. Agent is only restored when the user last left it there and the library is not empty.
+// Local launches open the workbench; explicit links and LAN access keep their destinations.
 const currentSection = () => {
   if ((window.location.hash || "").startsWith("#shares")) return "shares";
   if (lanGuest) return "wiki";
@@ -40,6 +41,7 @@ const currentSection = () => {
   const hash = window.location.hash || "";
   if (hash.startsWith("#wiki")) return "wiki";
   if (hash.startsWith("#agent")) return "workbench";
+  if (!hash) return "workbench";
   return "wiki";
 };
 
@@ -52,25 +54,6 @@ export default function App() {
     } catch { /* Storage may be disabled. */ }
   }, []);
   const [section, setSection] = useState(currentSection);
-  useEffect(() => {
-    try { localStorage.setItem("selfWikiSection", section); } catch { /* ignore */ }
-  }, [section]);
-  useEffect(() => {
-    if (lanGuest || (window.location.hash || "").startsWith("#")) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const last = localStorage.getItem("selfWikiSection");
-        if (!["agent", "workbench"].includes(last)) { if (!cancelled && !window.location.hash) window.location.hash = "wiki"; return; }
-        const result = await request("/api/elements?pageSize=1&scope=library");
-        if (cancelled) return;
-        window.location.hash = result.pagination?.total > 0 ? "workbench" : "wiki";
-      } catch {
-        if (!cancelled && !window.location.hash) window.location.hash = "wiki";
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
   const [visited, setVisited] = useState(() => new Set([section]));
   const workspaceScroll = useRef({});
   const wikiCurrentTab = useRef("all");
@@ -241,9 +224,9 @@ export default function App() {
         onAddReference={lanGuest ? undefined : addReference} onAskAgent={lanGuest ? undefined : askAgent} externalRevision={wikiRevision} onChanged={refreshWiki} openRequest={openRequest} />
     </Activity>}
     {section === "shares" && <div className="wiki-shell"><WikiSidebar activeTab="shares" readOnly={lanGuest} onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = "wiki"; }}>{workspaceNavigation}</WikiSidebar><TemporaryShares local={!lanGuest} /></div>}
-    {visited.has('workflow') && !lanGuest && <Activity mode={section === 'workflow' ? 'visible' : 'hidden'}><div className="wiki-shell"><WikiSidebar activeTab="workflow" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }}>{workspaceNavigation}</WikiSidebar><Suspense fallback={<p role="status">正在打开工作流…</p>}><WorkflowApp /></Suspense></div></Activity>}
-    {visited.has('workbench') && !lanGuest && <Activity mode={section === 'workbench' ? 'visible' : 'hidden'}><div className="wiki-shell workbench-shell"><WikiSidebar activeTab="workbench" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }}>{workspaceNavigation}</WikiSidebar><Suspense fallback={<p role="status">正在打开工作台…</p>}><AgentWorkbench onOpen={browseSource} /></Suspense></div></Activity>}
-    {visited.has('aionui') && !lanGuest && <Activity mode={section === 'aionui' ? 'visible' : 'hidden'}><div className="wiki-shell aionui-experiment-shell"><WikiSidebar activeTab="aionui" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }}>{workspaceNavigation}</WikiSidebar><Suspense fallback={<p role="status">正在打开实验入口…</p>}><AionuiExperiment active={section === 'aionui'} occluded={settingsOpen || shortcutsOpen || usageOpen || organizationOpen || sourcePreview !== null} /></Suspense></div></Activity>}
+    {visited.has('workflow') && !lanGuest && <Activity mode={section === 'workflow' ? 'visible' : 'hidden'}><div className="wiki-shell"><WikiSidebar activeTab="workflow" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="工作流"><Suspense fallback={<p role="status">正在打开工作流…</p>}><WorkflowApp /></Suspense></PageErrorBoundary></div></Activity>}
+    {visited.has('workbench') && !lanGuest && <Activity mode={section === 'workbench' ? 'visible' : 'hidden'}><div className="wiki-shell workbench-shell"><WikiSidebar activeTab="workbench" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="工作台"><Suspense fallback={<p role="status">正在打开工作台…</p>}><AgentWorkbench onOpen={browseSource} /></Suspense></PageErrorBoundary></div></Activity>}
+    {visited.has('aionui') && !lanGuest && <Activity mode={section === 'aionui' ? 'visible' : 'hidden'}><div className="wiki-shell aionui-experiment-shell"><WikiSidebar activeTab="aionui" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="实验入口"><Suspense fallback={<p role="status">正在打开实验入口…</p>}><AionuiExperiment active={section === 'aionui'} occluded={settingsOpen || shortcutsOpen || usageOpen || organizationOpen || sourcePreview !== null} /></Suspense></PageErrorBoundary></div></Activity>}
     </div>
     </div>
     {!lanGuest && section !== "workbench" && section !== 'aionui' && (references.length > 0 || referenceTray.error) && <ReferenceTray elements={references} collapsed={referencesCollapsed} onCollapse={setReferencesCollapsed} busy={referenceBusy || uploading} loading={referenceTray.loading} error={referenceTray.error || referenceError} onRetry={referenceTray.error ? referenceTray.retry : undefined} startDisabled={referenceTray.loading || referenceTray.unresolved || !references.length}

@@ -32,7 +32,7 @@ export async function callRestrictedGrok(snapshot, { prompt, images, workspace, 
         if (type === 'tool.updated') violation = new Error('受限模型节点拒绝工具调用');
         if (type === 'resource.queued') report('queued', true);
         if (type === 'resource.acquired') report('waiting', true);
-        if (type === 'engine.extension' && value.type === 'agent_thought_chunk' && !text) report('thinking');
+        if (type === 'reasoning.delta' && !text) report('thinking');
         if (type === 'message.delta') { text += value.text; if (Buffer.byteLength(text) > 2 * 1024 * 1024) throw new Error('模型输出超过 2 MiB'); report('generating'); }
       },
     });

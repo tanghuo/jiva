@@ -58,6 +58,21 @@ test('quota errors are sanitized and config generation discards late responses',
   const snap=service.snapshot();assert.equal(snap.accounts.some(a=>a.accountKey==='late'),false);assert.equal(snap.sources.find(s=>s.provider==='grok').state,'unsupported');assert.equal(JSON.stringify(snap).includes('SECRET'),false);
   const grok=snap.sources.find(s=>s.provider==='grok');assert.deepEqual(service.refresh([grok.sourceId],'open').acceptedSources,[]);advance(120000);assert.equal(service.refresh([grok.sourceId],'open').acceptedSources.length,1);
 });
+
+test('unverified quota refresh retains the previous display only while probing and clears it on identity changes or failure',async t=>{
+  let pending,sequence=0;
+  const read=async(_config,context)=>{
+    if(!sequence++)return {...result('old-session'),identityStatus:'unverified'};
+    return new Promise((resolve,reject)=>{pending={resolve,reject,context};});
+  };
+  const {service,advance}=await setup(t,{codex:read});const id=service.snapshot().sources[0].sourceId;
+  service.refresh([id],'manual');await settle(()=>!service.snapshot().refreshingSources.length);advance(5000);
+  const start=async()=>{pending=null;service.refresh([id],'manual');await settle(()=>Boolean(pending));assert.equal(service.snapshot().accounts[0].buckets[0].remainingPercent,88);assert.equal(service.snapshot().tightest.remainingPercent,88);};
+  await start();pending.resolve({...result('new-session'),identityStatus:'unverified',buckets:[quotaBucket({bucketId:'a',limitId:'a',label:'fixture',usedPercent:20})]});await settle(()=>!service.snapshot().refreshingSources.length);assert.equal(service.snapshot().accounts[0].accountKey,'new-session');assert.equal(service.snapshot().tightest.remainingPercent,80);
+  advance(5000);pending=null;service.refresh([id],'manual');await settle(()=>Boolean(pending));assert.equal(service.snapshot().tightest.remainingPercent,80);pending.context.onIdentity({accountKey:'different-account'});assert.equal(service.snapshot().accounts.length,0);pending.reject(Object.assign(new Error('changed'),{code:'IDENTITY_CHANGED'}));await settle(()=>!service.snapshot().refreshingSources.length);assert.equal(service.snapshot().accounts.length,0);
+  advance(5000);pending=null;service.refresh([id],'manual');await settle(()=>Boolean(pending));pending.resolve({...result('restored-session'),identityStatus:'unverified'});await settle(()=>!service.snapshot().refreshingSources.length);
+  advance(5000);await start();pending.reject(new Error('offline'));await settle(()=>!service.snapshot().refreshingSources.length);assert.equal(service.snapshot().accounts.length,0);
+});
 test('quota API protects local auth and LAN, streams snapshots and closes SSE before HTTP shutdown',async t=>{
   const dir=await mkdtemp(path.join(os.tmpdir(),'wiki-quota-http-'));const app=await createServer({port:0,dataDir:dir,quotaReaders:{codex:async()=>result(),grok:async()=>result(),gemini:async()=>result()}});
   t.after(async()=>{await app.close();assert.equal(path.dirname(dir),path.resolve(os.tmpdir()));assert.ok(path.basename(dir).startsWith('wiki-quota-http-'));await rm(dir,{recursive:true,force:true});});

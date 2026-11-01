@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { codexFileReferences } from './workbenchFileReferences.js';
+import { createCodexReasoningEvents } from './codexReasoningEvents.js';
 import { startCodexAppServer } from '../executors/codexAppServer.js';
 import { acquireExternalResource } from '../executors/resourceGate.js';
 import { approvalMode } from '../../shared/domain/agentWorkbench/approvalPolicy.js';
@@ -51,6 +53,7 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
     timer = setTimeout(() => completion.reject(new Error('Codex 轮次超时，结果可能未知')), remaining);
   }
   const items = new Map(), commands = new Map();
+  let emitReasoning = createCodexReasoningEvents(onEvent);
   const live = params => !closed && prompting && params.threadId === thread && typeof turn === 'string' && params.turnId === turn;
   try {
     client = await startCodexAppServer(config, { cwd: neutralCwd, signal, workbench: true, configOverrides: overrides(), onExit(error) { const failure = authMessage(error || new Error('Codex 连接断开')); completion?.reject(failure); onExit(failure); },
@@ -86,6 +89,7 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
         if (!prompting || params.threadId !== thread || closed) return;
         if (method === 'turn/started' && !turn) turn = params.turn.id;
         if (params.turnId && turn && params.turnId !== turn) return;
+        if (method.startsWith('item/reasoning/') || ['item/started', 'item/completed'].includes(method) && params.item?.type === 'reasoning') return emitReasoning(method, params);
         if (method === 'item/agentMessage/delta') return onEvent('message.delta', { text: params.delta, messageId: params.itemId, phase: items.get(params.itemId)?.phase });
         if (method === 'turn/plan/updated') return onEvent('plan.updated', { entries: (params.plan || []).map(entry => ({ content: entry.step, status: entry.status })) });
         if (method === 'thread/tokenUsage/updated') return onEvent('engine.usage', { namespace: 'codex', usage: params.tokenUsage });
@@ -116,15 +120,15 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
     await verifyMcp(client, cwd, thread);
     return {
       sessionId: thread, version: client.version, capabilities: { verified: true, resume: true, clientFiles: false, clientTerminal: false, approval: 'native', approvalMode: turnPolicy.mode, fileReads: 'native_full_disk', nativePolicy: result.sandbox, applicationTools: tools.length > 0, images: true },
-      async prompt(text, onDelivery = () => {}, images = []) {
+      async prompt(text, onDelivery = () => {}, images = [], files = []) {
         if (prompting || closed) throw new Error('Codex 会话不可发送');
         const release = await acquireExternalResource('codex', signal);
         try {
           signal?.throwIfAborted(); await verifyMcp(client, cwd, thread);
-          prompting = true; turn = null; items.clear(); commands.clear(); completion = Promise.withResolvers(); completion.promise.catch(() => {});
+          prompting = true; turn = null; items.clear(); commands.clear(); emitReasoning = createCodexReasoningEvents(onEvent); completion = Promise.withResolvers(); completion.promise.catch(() => {});
           remaining = 30 * 60 * 1000; armTimer();
           onDelivery('attempted');
-          const response = await client.request('turn/start', { threadId: thread, model: config.codexCli.model, ...(config.effort && { effort: config.effort }), approvalPolicy: turnPolicy.approvalPolicy, approvalsReviewer: turnPolicy.approvalsReviewer, sandboxPolicy: turnPolicy.sandboxPolicy, input: [{ type: 'text', text }, ...images.map(image => ({ type: 'image', url: `data:${image.mimeType};base64,${image.data}` }))] }, 60000);
+          const response = await client.request('turn/start', { threadId: thread, model: config.codexCli.model, summary: 'auto', ...(config.effort && { effort: config.effort }), approvalPolicy: turnPolicy.approvalPolicy, approvalsReviewer: turnPolicy.approvalsReviewer, sandboxPolicy: turnPolicy.sandboxPolicy, input: [{ type: 'text', text }, ...images.map(image => ({ type: 'image', url: `data:${image.mimeType};base64,${image.data}` })), ...codexFileReferences(files)] }, 60000);
           turn ||= response.turn.id; return await completion.promise;
         } finally { clearTimeout(timer); prompting = false; completion = null; release(); }
       },

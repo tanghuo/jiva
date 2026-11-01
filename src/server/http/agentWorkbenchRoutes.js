@@ -1,4 +1,5 @@
 import { json, text, readJson, readImage, httpError } from './http.js';
+import { maxAttachmentBytes } from '../../shared/domain/agentWorkbench/attachments.js';
 
 export async function handleAgentWorkbenchRoute(service, req, res, url, access, tasks) {
   if (!/^\/api\/agent(?:\/|$)/.test(url.pathname)) return false;
@@ -21,7 +22,17 @@ export async function handleAgentWorkbenchRoute(service, req, res, url, access, 
   else if ((match = /^\/sessions\/(\d+)\/resume$/.exec(p)) && method === 'POST') result = await service.resume(Number(match[1]));
   else if ((match = /^\/sessions\/(\d+)\/policy$/.exec(p)) && method === 'PUT') result = await service.policy(Number(match[1]), await body());
   else if ((match = /^\/sessions\/(\d+)\/draft$/.exec(p)) && method === 'PUT') result = service.saveDraft(Number(match[1]), await body());
-  else if ((match = /^\/sessions\/(\d+)\/attachments$/.exec(p)) && method === 'POST') result = await tasks.upload(Number(match[1]), await readImage(req));
+  else if ((match = /^\/sessions\/(\d+)\/attachments$/.exec(p)) && method === 'POST') {
+    let file;
+    if (req.headers['x-attachment-name'] !== undefined) {
+      let name;
+      try { name = decodeURIComponent(req.headers['x-attachment-name']); } catch { throw httpError(400, '附件文件名编码无效'); }
+      name = name.split(/[\\/]/).at(-1);
+      if (!name || name.length > 255 || /[\x00-\x1f\x7f]/.test(name)) throw httpError(400, '附件文件名无效');
+      file = { name, type: (req.headers['content-type'] || '').split(';')[0].toLowerCase() };
+    }
+    result = await tasks.upload(Number(match[1]), await readImage(req, { maxBytes: maxAttachmentBytes, limitMessage: '附件必须在 25 MiB 以内' }), file);
+  }
   else if ((match = /^\/sessions\/(\d+)\/proposals\/(\d+)\/decision$/.exec(p)) && method === 'POST') result = service.decideProposal(Number(match[2]), Number(match[1]), await body());
   else if ((match = /^\/sessions\/(\d+)\/image-operations$/.exec(p)) && method === 'POST') { const value = await body(); result = tasks.submit(Number(match[1]), Number(value.turnId), value); }
   else if ((match = /^\/operations\/([a-f0-9-]{36})(\/decision)?$/.exec(p))) {
@@ -42,7 +53,7 @@ export async function handleAgentWorkbenchRoute(service, req, res, url, access, 
   else if ((match = /^\/artifacts\/(\d+)(\/content)?$/.exec(p)) && method === 'GET') {
     const sessionId = Number(url.searchParams.get('sessionId'));
     if (!match[2]) result = tasks.artifact(Number(match[1]), sessionId);
-    else { const value = await tasks.content(Number(match[1]), sessionId); res.setHeader('x-content-type-options', 'nosniff'); text(res, 200, value.bytes, value.artifact.mimeType); return true; }
+    else { const value = await tasks.content(Number(match[1]), sessionId); res.setHeader('x-content-type-options', 'nosniff'); const mimeType = value.artifact.type === 'file' && value.artifact.mimeType !== 'application/pdf' ? 'application/octet-stream' : value.artifact.mimeType; text(res, 200, value.bytes, mimeType); return true; }
   }
   else if ((match = /^\/artifacts\/(\d+)\/wiki$/.exec(p)) && method === 'POST') result = await tasks.saveToWiki(Number(match[1]), Number(url.searchParams.get('sessionId')));
   else if ((match = /^\/turns\/(\d+)\/cancel$/.exec(p)) && method === 'POST') result = await service.cancel(Number(match[1]));

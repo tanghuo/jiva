@@ -8,7 +8,9 @@ import { openCodexWorkbench, verifyCodexWorkbenchPolicy, codexTurnPolicy } from 
 test('Codex translates native approval snapshots, output, SDK tools, cancellation and load without replay', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-codex-workbench-fixture-'));
   t.after(async () => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-codex-workbench-fixture-')); await rm(root, { recursive: true, force: true, maxRetries: 3 }); });
-  const executable = path.join(root, 'codex.mjs'); await writeFile(executable, await readFile(new URL('../fixtures/codex-workbench.txt', import.meta.url)));
+  const executable = path.join(root, 'codex.mjs');
+  const source = (await readFile(new URL('../fixtures/codex-workbench.txt', import.meta.url), 'utf8')).replace('const text = p.input[0].text;', "await writeFile(path.join(cwd, 'last-input.json'), JSON.stringify(p.input)); const text = p.input[0].text;");
+  await writeFile(executable, source);
   const events = [], approvals = []; let tools = 0;
   const callbacks = { cwd: root, neutralCwd: root, signal: AbortSignal.timeout(10000), tools: [{ name: 'wiki_search', description: 'fixture', inputSchema: { type: 'object' } }],
     onEvent: (type, data) => events.push({ type, data }), onExit() {},
@@ -24,8 +26,12 @@ test('Codex translates native approval snapshots, output, SDK tools, cancellatio
   const client = await openCodexWorkbench(config, callbacks);
   assert.equal(client.capabilities.fileReads, 'native_full_disk');
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  try { assert.equal((await client.prompt('fixture')).stopReason, 'end_turn'); }
+  const attachment = { path: path.join(root, 'report.pdf'), name: 'report.pdf', mimeType: 'application/pdf', size: 12 };
+  try { assert.equal((await client.prompt('fixture', () => {}, [], [attachment])).stopReason, 'end_turn'); }
   finally { t.mock.timers.reset(); await client.close(); }
+  const input = JSON.parse(await readFile(path.join(root, 'last-input.json'), 'utf8'));
+  assert.equal(input[1].type, 'text'); assert.ok(input[1].text.includes(attachment.path.replaceAll('\\', '\\\\'))); assert.match(input[1].text, /report\.pdf/);
+  assert.equal(input.some(item => item.type === 'mention'), false);
   await assert.rejects(readFile(path.join(root, 'result.txt')), { code: 'ENOENT' });
   assert.deepEqual(approvals.map(op => op.kind), ['native.file', 'native.command']); assert.match(approvals[0].changes[0].diff, /fixture/);
   assert.ok(events.some(event => event.type === 'command.completed' && event.data.exitCode === 0 && event.data.output === 'fixture command output')); assert.equal(tools, 1);

@@ -70,7 +70,7 @@ test('a failed background catalog is local to its engine and can be retried', { 
   browser = await chromium.launch({ executablePath, headless: true }); const page = await browser.newPage();
   await page.route('**/api/agent/engines/*/models', route => {
     if (route.request().url().includes('/codex-cli/')) {
-      if (++attempts === 1) return route.fulfill({ status: 503, json: { error: 'Codex 暂时不可用' } });
+      if (++attempts <= 2) return route.fulfill({ status: 503, json: { error: 'Codex 暂时不可用' } });
       return route.fulfill({ json: { models: [{ id: 'codex-ready', label: 'Codex Ready' }], defaultModel: 'codex-ready' } });
     }
     return route.fulfill({ json: { models: [{ id: 'fixture-model', label: 'Fixture Model' }], defaultModel: 'fixture-model' } });
@@ -84,6 +84,6 @@ test('a failed background catalog is local to its engine and can be retried', { 
   await page.getByRole('alert').filter({ hasText: 'Codex 暂时不可用' }).waitFor();
   await page.getByRole('button', { name: '重试读取模型' }).click();
   await page.getByRole('button', { name: 'Codex Ready', exact: true }).waitFor();
-  assert.equal(attempts, 2);
+  assert.equal(attempts, 3);
   assert.equal(await page.getByLabel('任务内容').inputValue(), '草稿仍可编辑');
 });

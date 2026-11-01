@@ -6,7 +6,7 @@
 
 ## 仓库名称
 
-产品与代码中的标识已统一为 **Jiva**。GitHub 仓库拟更名为 [`tanghuo/jiva`](https://github.com/tanghuo/jiva)；远程仓库改名需仓库所有者在 GitHub 上操作，本补丁不会改 remote。
+产品与代码中的标识已统一为 **Jiva**。GitHub 仓库是 [`tanghuo/jiva`](https://github.com/tanghuo/jiva)。
 
 ## 功能概览
 

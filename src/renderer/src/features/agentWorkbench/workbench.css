@@ -24,6 +24,12 @@
 .workbench-event:empty { display: none; }
 .workbench-event { font-size: var(--fs-small); margin: var(--sp-3) 0; }
 .workbench-event.assistant { font-size: var(--fs-body); }
+.workbench-reasoning { margin-block: var(--sp-4); color: var(--muted); font-size: var(--fs-small); }
+.workbench-reasoning > summary { display: flex; align-items: center; gap: var(--sp-2); padding-block: var(--sp-2); cursor: pointer; list-style: none; }
+.workbench-reasoning > summary::-webkit-details-marker { display: none; }
+.workbench-reasoning[open] > summary > svg { transform: rotate(90deg); }
+.workbench-reasoning > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.workbench-reasoning > .workbench-markdown { padding: var(--sp-3); border-left: 1px solid var(--line); max-height: 360px; overflow: auto; }
 .workbench-approval { border-color: var(--accent); }
 .workbench-approval h3 { display: flex; gap: var(--sp-2); align-items: center; font-size: var(--fs-section); margin-top: 0; }
 .workbench-page pre { max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-caption); padding: var(--sp-3); background: var(--hover); border-radius: var(--r-sm); }

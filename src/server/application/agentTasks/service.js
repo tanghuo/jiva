@@ -140,18 +140,30 @@ export function createAgentTaskService({ repo, sessions, store, wiki, workflow, 
     async saveToWiki(id, sessionId) {
       const artifact = repo.artifact(Number(id), Number(sessionId)), receipt = repo.wikiReceipt(artifact.id);
       if (receipt) return receipt;
+      if (artifact.type === 'file') throw agentError('UNSUPPORTED_ARTIFACT', '文件附件请下载原件，或让 Agent 读取后生成文字结果再存入 Wiki');
       const { bytes } = await this.content(artifact.id, sessionId);
       const element = artifact.type === 'text' ? await wiki.create({ body: bytes.toString('utf8'), tags: [] }) : await wiki.importImage(bytes, `Agent-${artifact.hash.slice(0, 12)}.png`, []);
       return repo.saveWikiReceipt(artifact.id, element.id);
     },
-    async upload(id, bytes) {
+    async upload(id, bytes, file) {
       if (!enabled() || closing) throw agentError('WORKBENCH_DISABLED', '工作台已停用', 409);
-      sessions.session(Number(id)); return repo.publishArtifact(Number(id), await store.saveImage(bytes, { source: 'user' }));
+      sessions.session(Number(id)); return repo.publishArtifact(Number(id), file ? await store.saveAttachment(bytes, file) : await store.saveImage(bytes, { source: 'user' }));
     },
     prepareUpload: bytes => store.saveImage(bytes, { source: 'wiki-reference' }),
     publishUpload: (id, value) => repo.publishArtifact(id, value),
     async modelImage(id, sessionId) { const value = await this.content(id, sessionId); if (value.artifact.type !== 'image') throw agentError('NOT_IMAGE', '此产物不是图片'); return store.previewImage(value.bytes); },
-    async promptAttachments(ids, sessionId) { const images = [], texts = []; for (const id of ids) { const value = await this.content(id, sessionId); if (value.artifact.type === 'image') images.push(await store.previewImage(value.bytes)); else texts.push(value.bytes.toString('utf8').slice(0, 64000)); } return { images, text: texts.join('\n\n') }; },
+    async fileReference(id, sessionId) { return store.fileReference(repo.artifact(Number(id), Number(sessionId))); },
+    async promptAttachments(ids, sessionId) {
+      const images = [], texts = [], files = [];
+      for (const id of ids) {
+        const artifact = repo.artifact(Number(id), Number(sessionId));
+        if (artifact.type === 'file') { files.push(await store.fileReference(artifact)); continue; }
+        const value = await this.content(id, sessionId);
+        if (value.artifact.type === 'image') images.push(await store.previewImage(value.bytes));
+        else texts.push(value.bytes.toString('utf8').slice(0, 64000));
+      }
+      return { images, files, text: texts.join('\n\n') };
+    },
     async inspectStorage() { return { unreferenced: await store.unreferenced(repo.storageKeys()) }; },
     content: thisContent,
     async close() { closing = true; clearInterval(expiryTimer); const jobs = [...active.values()]; for (const job of jobs) job.controller.abort(); await Promise.allSettled(jobs.map(job => job.promise)); await workflowBridge?.close(); },

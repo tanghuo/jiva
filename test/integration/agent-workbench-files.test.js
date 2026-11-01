@@ -56,3 +56,14 @@ test('workspace trust is explicit; protected roots fail; projects are reused by 
   assert.equal(listed.some(item => item.id === scratch.id), false);
   await assert.rejects(registerWorkspace(repo, data, { kind: 'project', path: project, name: '   ', trusted: true }), { code: 'INVALID_PROJECT' });
 });
+
+test('explicit attachments grant reads to exact files without granting sibling access or writes', async t => {
+  const { project, outside } = await fixture(t);
+  const attached = path.join(outside, 'attached.txt'), sibling = path.join(outside, 'secret.txt');
+  await writeFile(attached, 'user attachment'); await writeFile(sibling, 'other session');
+  const gateway = createFileGateway({ workspace: { path: project }, readFiles: () => [attached], assertLive() {}, approve: async () => true, onChange() {} });
+  assert.equal((await gateway.read({ path: attached })).content, 'user attachment');
+  await assert.rejects(gateway.read({ path: sibling }), { code: 'PATH_DENIED' });
+  await assert.rejects(gateway.write({ path: attached, content: 'overwrite' }), { code: 'PATH_DENIED' });
+  assert.equal(await readFile(attached, 'utf8'), 'user attachment');
+});

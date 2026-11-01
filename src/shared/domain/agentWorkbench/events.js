@@ -5,7 +5,7 @@ export function toolStatus(status) {
 }
 
 export function workbenchTimeline(events, turn) {
-  const items = [], calls = new Map();
+  const items = [], calls = new Map(), reasoning = new Map();
   let lastType;
   for (const event of events) {
     if (event.turnId !== turn.id) continue;
@@ -17,6 +17,14 @@ export function workbenchTimeline(events, turn) {
       const item = { ...event, data };
       if (data.id) calls.set(data.id, item);
       items.push(item);
+    } else if (['reasoning.delta', 'reasoning.updated'].includes(event.type)) {
+      const key = JSON.stringify([data.messageId, data.kind, data.partIndex]);
+      const previous = reasoning.get(key);
+      if (previous) previous.data.text = event.type === 'reasoning.updated' ? data.text : previous.data.text + data.text;
+      else {
+        const item = { ...event, type: 'reasoning.delta', data };
+        reasoning.set(key, item); items.push(item);
+      }
     } else if (event.type === 'message.delta') {
       const previous = items.at(-1);
       if (lastType === event.type && previous?.type === event.type && previous.data.messageId === data.messageId && previous.data.phase === data.phase) previous.data.text += data.text;
@@ -46,6 +54,7 @@ export function workbenchTimeline(events, turn) {
   const groups = [];
   for (const item of items) {
     if (item.attached) continue;
+    if (item.type === 'reasoning.delta' && !item.data.text) continue;
     const activity = ['tool.updated', 'command.output', 'plan.updated'].includes(item.type), previous = groups.at(-1);
     if (activity && previous?.activity) previous.items.push(item);
     else groups.push({ key: item.seq, activity, items: [item] });

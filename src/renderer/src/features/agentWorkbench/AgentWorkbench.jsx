@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Square, ArrowUp, ShieldCheck, Folder, FolderOpen, PanelLeft, PanelRight, Monitor, ChevronRight, Check, CircleAlert, LoaderCircle } from 'lucide-react';
+import { Plus, Square, ArrowUp, ShieldCheck, Folder, FolderOpen, PanelLeft, PanelRight, Monitor, ChevronRight, Check, CircleAlert, LoaderCircle, FileText, Download } from 'lucide-react';
 import { apiUrl, request } from '../../api.js';
 import ReactMarkdown from 'react-markdown';
 import { DialogFrame } from '../../ui/ConfirmDialog.jsx';
@@ -18,7 +18,8 @@ import { rememberedApprovalMode, rememberApprovalMode, hasRememberedApprovalMode
 import { preferredProject, rememberedProject, rememberProject } from './workbenchProjectMemory.js';
 import useWorkbenchTextarea from './useWorkbenchTextarea.js';
 import WorkbenchResults, { CommandOutput } from './WorkbenchResults.jsx';
-import { maxWorkbenchImages, workbenchImageError, workbenchImageFiles } from './workbenchImages.js';
+import WorkbenchReasoning from './WorkbenchReasoning.jsx';
+import { maxWorkbenchAttachments, attachmentError, attachmentKind, attachmentEvents, attachmentHeaders } from './workbenchAttachments.js';
 
 import { workbenchTimeline } from '../../../../shared/domain/agentWorkbench/events.js';
 import { activityTitle, commandState } from './workbenchActivity.js';
@@ -124,7 +125,8 @@ function TurnStatus({ turn, groups }) {
   const duration = elapsed < 60 ? `${elapsed} 秒` : `${Math.floor(elapsed / 60)} 分 ${elapsed % 60} 秒`;
   const tools = groups.flatMap(group => group.items).filter(item => item.type === 'tool.updated');
   const current = tools.findLast(item => active(item.data.status));
-  const description = turn.state === 'running' ? current ? activityTitle(current.data) : tools.length ? '正在继续处理' : '正在等待引擎响应' : labels[turn.state] || turn.state;
+  const thinking = groups.at(-1)?.items[0].type === 'reasoning.delta';
+  const description = turn.state === 'running' ? current ? activityTitle(current.data) : thinking ? '模型思考中' : tools.length ? '正在继续处理' : '正在等待引擎响应' : labels[turn.state] || turn.state;
   const latest = tools.at(-1);
   return <div className="workbench-turn-state" data-state={turn.state} role={running ? 'status' : undefined}>
     <span className="workbench-status-label">{running && <span className="workbench-working-dot" aria-hidden="true" />}{description}</span>
@@ -132,6 +134,17 @@ function TurnStatus({ turn, groups }) {
     {running && !current && latest && <span className="workbench-last-operation" title={activityTitle(latest.data)}>最近操作：{activityTitle(latest.data)}</span>}
     {turn.state === 'unknown' && <span>不会自动重发，请先核对文件和命令结果。</span>}
   </div>;
+}
+function FileReference({ artifact, id, href }) {
+  const filename = artifact?.metadata.filename || `附件-${id}.txt`;
+  const extension = /\.([^.]+)$/.exec(filename)?.[1].toUpperCase() || '文件';
+  const bytes = artifact?.byteSize;
+  const size = !Number.isFinite(bytes) ? '' : bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
+  return <a className="workbench-file-reference" href={href} download={filename} title={filename} aria-label={`下载附件 ${filename}`}>
+    <FileText size={20} aria-hidden="true" />
+    <span className="workbench-file-info"><span className="workbench-file-name">{artifact?.metadata.filename || '文字参考'}</span><span className="workbench-file-meta">{[extension, size].filter(Boolean).join(' · ')}</span></span>
+    <Download size={15} aria-hidden="true" />
+  </a>;
 }
 function Timeline({ turns, events, artifacts, sessionId, renderResults }) {
   const [preview, setPreview] = useState(null);
@@ -143,11 +156,11 @@ function Timeline({ turns, events, artifacts, sessionId, renderResults }) {
         <div className="workbench-message user">
           {!!turn.input.artifactIds?.length && <div className="workbench-message-references">{turn.input.artifactIds.map(id => {
             const artifact = artifacts.find(item => item.id === id);
-            return artifact?.type === 'text' ? <a key={id} href={artifactUrl(id)} target="_blank" rel="noreferrer">文字参考</a> : <button type="button" key={id} aria-label="查看参考图" onClick={() => setPreview(id)}><img loading="lazy" src={artifactUrl(id)} alt="本轮参考图" /></button>;
+            return artifact?.type !== 'image' ? <FileReference key={id} artifact={artifact} id={id} href={artifactUrl(id)} /> : <button type="button" key={id} aria-label="查看参考图" onClick={() => setPreview(id)}><img loading="lazy" src={artifactUrl(id)} alt="本轮参考图" /></button>;
           })}</div>}
           <p>{turn.input.text}</p>
         </div>
-        {groups.map((group, index) => group.activity ? <ExecutionGroup group={group} turnId={turn.id} live={active(turn.state) && index === groups.findLastIndex(value => value.activity)} key={group.key} /> : <div className="workbench-event assistant" data-phase={group.items[0].data.phase} key={group.key}>{group.items[0].type === 'message.delta' ? <div className="workbench-markdown"><ReactMarkdown skipHtml components={{ a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer">{children}</a> }}>{group.items[0].data.text}</ReactMarkdown></div> : <p role="alert">{group.items[0].data.error}</p>}</div>)}
+        {groups.map((group, index) => group.activity ? <ExecutionGroup group={group} turnId={turn.id} live={active(turn.state) && index === groups.findLastIndex(value => value.activity)} key={group.key} /> : group.items[0].type === 'reasoning.delta' ? <WorkbenchReasoning item={group.items[0]} live={turn.state === 'running' && index === groups.length - 1} key={group.key} /> : <div className="workbench-event assistant" data-phase={group.items[0].data.phase} key={group.key}>{group.items[0].type === 'message.delta' ? <div className="workbench-markdown"><ReactMarkdown skipHtml components={{ a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer">{children}</a> }}>{group.items[0].data.text}</ReactMarkdown></div> : <p role="alert">{group.items[0].data.error}</p>}</div>)}
         {renderResults(turn)}
         <TurnStatus turn={turn} groups={groups} />
         <WorkbenchChanges turn={turn} sessionBusy={turns.some(turn => active(turn.state))} revision={events.filter(event => event.turnId === turn.id && ['file.changed', 'file.native_diff', 'engine.diff', 'workspace.changed'].includes(event.type)).at(-1)?.seq || 0} />
@@ -176,9 +189,9 @@ export default function AgentWorkbench({ onOpen }) {
       return model === previous.model ? previous : { ...previous, model };
     });
   }, [modelCatalog, settings.engine]);
-  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [railOpen, setRailOpen] = useState(false), [detailsOpen, setDetailsOpen] = useState(false), [pendingImages, setPendingImages] = useState([]);
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [railOpen, setRailOpen] = useState(false), [detailsOpen, setDetailsOpen] = useState(false), [pendingAttachments, setPendingAttachments] = useState([]);
   const fileInput = useRef(null), scroll = useRef(null), follows = useRef(true), sending = useRef(false), pendingRef = useRef([]), detailLoad = useRef(0);
-  pendingRef.current = pendingImages;
+  pendingRef.current = pendingAttachments;
   const editor = useWorkbenchDraft(selected, setError), draft = editor.value?.text || '';
   const textarea = useWorkbenchTextarea(draft);
   const change = value => {
@@ -221,15 +234,15 @@ export default function AgentWorkbench({ onOpen }) {
     if (window.location.hash.startsWith('#workbench')) window.history.replaceState(null, '', id ? `#workbench?session=${id}` : '#workbench');
   }
   useEffect(() => () => { for (const image of pendingRef.current) URL.revokeObjectURL(image.url); }, []);
-  function addPendingImages(files) {
-    if (busy) { setError('请等待当前操作完成后再添加图片'); return; }
-    const problem = workbenchImageError(files, pendingImages.length);
+  function addPendingAttachments(files) {
+    if (busy) { setError('请等待当前操作完成后再添加附件'); return; }
+    const problem = attachmentError(files, pendingRef.current.length);
     if (problem) { setError(problem); return; }
     setError('');
-    setPendingImages(current => [...current, ...files.map(file => ({ key: crypto.randomUUID(), file, url: URL.createObjectURL(file) }))]);
+    setPendingAttachments(current => [...current, ...files.map(file => ({ key: crypto.randomUUID(), file, url: URL.createObjectURL(file) }))]);
   }
-  function removePendingImage(key) {
-    setPendingImages(current => {
+  function removePendingAttachment(key) {
+    setPendingAttachments(current => {
       const image = current.find(value => value.key === key);
       if (image) URL.revokeObjectURL(image.url);
       return current.filter(value => value.key !== key);
@@ -316,7 +329,7 @@ export default function AgentWorkbench({ onOpen }) {
       let uploadError;
       for (const image of images) {
         try {
-          const artifact = await request(`${base}/sessions/${session.id}/attachments`, { method: 'POST', headers: { 'content-type': image.file.type || 'application/octet-stream' }, body: image.file });
+          const artifact = await request(`${base}/sessions/${session.id}/attachments`, { method: 'POST', headers: attachmentHeaders(image.file), body: image.file });
           attachments.push(artifact.id);
         } catch (error) { uploadError = error; break; }
       }
@@ -325,9 +338,9 @@ export default function AgentWorkbench({ onOpen }) {
         value = { ...value, draft: saved };
       }
       for (const image of images) URL.revokeObjectURL(image.url);
-      setPendingImages([]);
+      setPendingAttachments([]);
       editor.hydrate(session.id, value.draft); choose(session.id); setNewText('');
-      if (uploadError) throw uploadError;
+      if (uploadError) throw new Error(`${uploadError.message}。任务和成功上传的附件已保存，请重新添加失败及尚未上传的文件。`);
       await refresh();
       if (value.draft.text.trim()) {
         await post(`/sessions/${session.id}/turns`, { text: value.draft.text, artifactIds: value.draft.attachments, requestKey: value.draft.requestKey });
@@ -356,18 +369,20 @@ export default function AgentWorkbench({ onOpen }) {
   const imagesUnsupported = Boolean(detail && detail.session.engine !== 'grok-build' && detail.session.capabilities?.images === false);
   async function attachFiles(files) {
     const existing = editor.value?.attachments || [];
-    if (imagesUnsupported) { setError('此引擎未声明支持图片输入，未添加参考图'); return; }
-    const problem = workbenchImageError(files, existing.length);
-    if (busy) { setError('请等待当前操作完成后再添加图片'); return; }
+    if (imagesUnsupported && files.some(file => attachmentKind(file) === 'image')) { setError('此引擎未声明支持图片输入，未添加附件；可以单独添加文本、代码或 PDF'); return; }
+    const problem = attachmentError(files, existing.length);
+    if (busy || !editor.value) { setError('请等待当前操作完成后再添加附件'); return; }
     if (problem) { setError(problem); return; }
     await action(async () => {
       const ids = [...existing];
       for (const file of files) {
-        const artifact = await request(`${base}/sessions/${selected}/attachments`, { method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file });
+        const artifact = await request(`${base}/sessions/${selected}/attachments`, { method: 'POST', headers: attachmentHeaders(file), body: file });
         ids.push(artifact.id);
+        editor.update({ attachments: [...ids] }, selected);
+        await editor.flush(selected);
+        const value = await request(`${base}/sessions/${selected}`);
+        setDetail(current => current?.session.id === selected ? value : current);
       }
-      editor.update({ attachments: ids });
-      await reloadDetail();
     });
   }
   const stop = () => action(async () => { await post(`/turns/${current.id}/cancel`); await reloadDetail(); });
@@ -412,7 +427,7 @@ export default function AgentWorkbench({ onOpen }) {
         : <><h3>会话设置</h3><p className="agent-shell-empty">打开或新建一个会话后，这里显示它的项目路径和审批规则。</p></>}>
     {!status ? <p className="workbench-conversation" role="status">正在加载工作台…</p> : !status.agentWorkbenchEnabled ? <section className="workbench-empty"><h2>启用 Agent 工作台</h2><p>项目需要先确认信任；文件写入和命令逐次审批。已批准的命令使用当前用户权限运行。</p><button onClick={() => action(async () => { await request(base + '/settings', { method: 'PUT', body: JSON.stringify({ agentWorkbenchEnabled: true }) }); await refresh(); })} disabled={busy}>启用工作台</button></section> : <>
       <section className="workbench-conversation">
-        {!selected ? <WorkbenchStart settings={settings} change={change} projects={projects} engines={status.engines} models={models} modelState={modelCatalog[settings.engine]} retryModels={() => loadEngineModels(settings.engine, true)} text={newText} setText={setNewText} busy={busy} create={create} createProject={createProject} selectEngine={selectEngine} loadModels={loadModels} connectAntigravity={connectAntigravity} images={pendingImages} addImages={addPendingImages} removeImage={removePendingImage} /> : !detail ? <p role="status">正在打开会话…</p> : <>
+        {!selected ? <WorkbenchStart settings={settings} change={change} projects={projects} engines={status.engines} models={models} modelState={modelCatalog[settings.engine]} retryModels={() => loadEngineModels(settings.engine, true)} text={newText} setText={setNewText} busy={busy} create={create} createProject={createProject} selectEngine={selectEngine} loadModels={loadModels} connectAntigravity={connectAntigravity} files={pendingAttachments} addFiles={addPendingAttachments} removeFile={removePendingAttachment} /> : !detail ? <p role="status">正在打开会话…</p> : <>
 
           <div className="workbench-session-grid">
             <div className="workbench-chat-column">
@@ -422,18 +437,18 @@ export default function AgentWorkbench({ onOpen }) {
                 <Timeline turns={detail.turns} events={events} artifacts={detail.artifacts || []} sessionId={selected} renderResults={turn => <WorkbenchResults onOpen={onOpen} turnId={turn.id} detail={detail} busy={busy} act={action} refresh={reloadDetail} attach={id => { const attachments = editor.value?.attachments || []; if (!attachments.includes(id) && attachments.length < 8) editor.update({ attachments: [...attachments, id], text: draft || '请分析这些产物，并继续任务。' }); }} />} />
                 {detail.approvals.map(approval => <Approval key={approval.id} approval={approval} busy={busy} decide={(a, decision) => action(async () => { await post(`/approvals/${a.id}/decision`, { decision, operationHash: a.operationHash, revision: a.policyRevision }); await reloadDetail(); })} />)}
               </div>
-              <form className="workbench-composer" onSubmit={send} onPaste={event => { const files = workbenchImageFiles(event.clipboardData); if (!files.length) return; event.preventDefault(); event.stopPropagation(); void attachFiles(files); }}>
+              <form className="workbench-composer" onSubmit={send} {...attachmentEvents(attachFiles)}>
                 <div className="workbench-attachments">{(editor.value?.attachments || []).map(id => {
                   const artifact = (detail.artifacts || []).find(item => item.id === id);
-                  const image = artifact?.type !== 'text';
-                  return <button key={id} type="button" className={image ? 'workbench-image-chip' : 'workbench-file-chip'} aria-label={`参考图 ${id} ×`} title={image ? '移除参考图' : '移除文字结果'} disabled={busy} onClick={() => editor.update({ attachments: editor.value.attachments.filter(value => value !== id) })}>
-                    {image ? <img src={apiUrl(`${base}/artifacts/${id}/content?sessionId=${selected}`)} alt="" /> : <span>文字结果</span>}
+                  const image = artifact?.type === 'image', filename = artifact?.metadata.filename || '文字结果';
+                  return <button key={id} type="button" className={image ? 'workbench-image-chip' : 'workbench-file-chip'} aria-label={image ? `参考图 ${id} ×` : `移除附件 ${filename}`} title={image ? '移除参考图' : filename} disabled={busy} onClick={() => editor.update({ attachments: editor.value.attachments.filter(value => value !== id) })}>
+                    {image ? <img src={apiUrl(`${base}/artifacts/${id}/content?sessionId=${selected}`)} alt="" /> : <span>{filename}</span>}
                     <span className="workbench-image-remove" aria-hidden="true">×</span>
                   </button>;
-                })}<input ref={fileInput} aria-label="选择参考图文件" hidden type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busy || !editor.value || (editor.value?.attachments.length || 0) >= maxWorkbenchImages} onChange={event => { const files = [...event.target.files]; event.target.value = ''; if (files.length) void attachFiles(files); }} /></div>
-                <textarea ref={textarea} aria-label="任务内容" placeholder={current ? '可以先写下一条任务，当前任务结束后发送，也可粘贴图片…' : '描述要完成的任务，也可直接粘贴图片…'} value={draft} disabled={busy || !editor.value} onChange={event => editor.update({ text: event.target.value })} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form.requestSubmit(); } }} rows={3} />
+                })}<input ref={fileInput} aria-label="选择附件文件" hidden type="file" multiple disabled={busy || !editor.value || (editor.value?.attachments.length || 0) >= maxWorkbenchAttachments} onChange={event => { const files = [...event.target.files]; event.target.value = ''; if (files.length) void attachFiles(files); }} /></div>
+                <textarea ref={textarea} aria-label="任务内容" placeholder={current ? '可以先写下一条任务，也可拖入或粘贴附件…' : '描述任务，也可拖入或粘贴图片、代码、TXT、PDF…'} value={draft} disabled={busy || !editor.value} onChange={event => editor.update({ text: event.target.value })} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form.requestSubmit(); } }} rows={3} />
                 <div className="workbench-composer-toolbar">
-                  <button type="button" className="icon-only" aria-label="添加参考图" title={imagesUnsupported ? '此引擎未声明支持图片输入' : '添加参考图'} disabled={busy || imagesUnsupported || !editor.value || (editor.value?.attachments.length || 0) >= maxWorkbenchImages} onClick={() => fileInput.current?.click()}><Plus size={19} /></button>
+                  <button type="button" className="icon-only" aria-label="添加附件" title="添加图片、文本、代码或 PDF" disabled={busy || !editor.value || (editor.value?.attachments.length || 0) >= maxWorkbenchAttachments} onClick={() => fileInput.current?.click()}><Plus size={19} /></button>
                   <span className="workbench-project-chip" title={detail.workspace.path}><FolderOpen size={15} /><span>{projectLabel(detail.workspace)}</span></span>
                   <span className="workbench-machine"><Monitor size={14} />此计算机</span>
                   {!detail.session.data.restricted && detail.session.purpose !== 'workflow' && <WorkbenchApprovalPicker mode={detail.session.policy.approvalMode} engine={detail.session.engine} disabled={busy} deferred={!!current} onChange={mode => action(async () => { const saved = await request(`${base}/sessions/${selected}/policy`, { method: 'PUT', body: JSON.stringify({ revision: detail.session.revision, approvalMode: mode }) }); rememberApprovalMode(saved.engine, saved.policy?.approvalMode); detailLoad.current += 1; setDetail(current => current?.session.id === saved.id ? { ...current, session: saved } : current); setSessions(current => current.map(item => item.id === saved.id ? saved : item)); await reloadDetail(); })} />}

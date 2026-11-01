@@ -63,6 +63,10 @@ export function createAgentTools({ wiki, repo, tasks }) {
         }
         if (name === 'artifact_read') {
           const artifact = tasks.artifact(input.artifactId, sessionId);
+          if (artifact.type === 'file') {
+            const file = await tasks.fileReference(input.artifactId, sessionId); assertLive();
+            return { artifact, file, content: [{ type: 'text', text: `原始文件附件，请使用引擎工具读取：${JSON.stringify(file)}` }] };
+          }
           const content = artifact.type === 'image' ? [await tasks.modelImage(input.artifactId, sessionId)] : [{ type: 'text', text: (await tasks.content(input.artifactId, sessionId)).bytes.toString('utf8').slice(0, 64000) }]; assertLive();
           return { artifact, content };
         }

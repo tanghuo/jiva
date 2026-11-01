@@ -21,7 +21,16 @@ export async function startAntigravityAcp(settings, { cwd, signal, onNotificatio
   const child = spawn(script ? process.execPath : executable, script ? [executable] : [], { cwd, windowsHide: true, shell: false,
     detached: process.platform !== 'win32', env: childEnvironment(), stdio: ['pipe', 'pipe', 'pipe'] });
   const pending = new Map(), decoder = new StringDecoder('utf8');
-  let sequence = 0, buffer = '', ended = false, closing = false, closePromise, hostRequests = 0;
+  let sequence = 0, buffer = '', ended = false, closing = false, closePromise, hostRequests = 0, stderr = '', stage = '启动';
+  function processError(exitCode, exitSignal) {
+    // Keep only fixed diagnostic categories: stderr may contain tokens and account data.
+    const auth = /invalid_grant|refresh token (?:has been )?(?:revoked|expired)|reauthentication required|RefreshError[^\n]*(?:revoked|invalid)/i.test(stderr);
+    const network = /ConnectionError|ConnectTimeout|ReadTimeout|ProxyError|NameResolutionError|connection (?:refused|reset)|timed? out|Temporary failure in name resolution/i.test(stderr);
+    const refresh = /(?:failed|unable) to refresh|token refresh failed|RefreshError/i.test(stderr);
+    const reason = auth ? '授权已失效，请重新连接 Antigravity 账号' : network ? '网络连接失败，请检查网络或代理' : refresh ? '登录凭据刷新失败' : '未识别的进程错误';
+    return Object.assign(new Error(`Antigravity ACP 进程已退出（阶段：${stage}；退出码：${exitCode ?? exitSignal ?? '未知'}；${reason}）`),
+      { code: auth ? 'AUTH_REQUIRED' : 'ACP_PROCESS_EXIT' });
+  }
   const write = value => { if (!ended && !child.stdin.destroyed) child.stdin.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n'); };
   function fail(error) {
     if (ended) return; ended = true;
@@ -30,6 +39,7 @@ export async function startAntigravityAcp(settings, { cwd, signal, onNotificatio
   }
   function request(method, params = {}, timeout = 30000) {
     if (ended) return Promise.reject(new Error('Antigravity ACP 连接已关闭'));
+    stage = method;
     return new Promise((resolve, reject) => {
       const id = ++sequence;
       const entry = { resolve, reject, method, remaining: timeout, timer: null, startedAt: 0 };
@@ -70,10 +80,10 @@ export async function startAntigravityAcp(settings, { cwd, signal, onNotificatio
       if (line.trim()) { try { message(JSON.parse(line)); } catch { fail(new Error('Antigravity 返回无效 ACP 事件')); void close(); return; } }
     }
   });
-  child.stderr.resume();
+  child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString('utf8')).slice(-16384); });
   child.stdin.on('error', () => fail(new Error('Antigravity 输入连接关闭')));
-  child.once('error', () => fail(new Error('无法启动 Antigravity ACP')));
-  child.once('close', () => fail(new Error('Antigravity ACP 进程已退出')));
+  child.once('error', error => fail(Object.assign(new Error(`无法启动 Antigravity ACP（${/^[A-Z_]+$/.test(error.code || '') ? error.code : '未知系统错误'}）`), { code: 'ACP_START_FAILED' })));
+  child.once('close', (code, signal) => fail(processError(code, signal)));
   async function close() {
     if (closePromise) return closePromise;
     closing = true;

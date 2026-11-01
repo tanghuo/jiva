@@ -35,6 +35,7 @@ process.stdin.on('data', chunk => {
     } else if (method === 'session/prompt') {
       const images = params.prompt.filter(block => block.type === 'image');
       appendFileSync(log, JSON.stringify(images.map(block => block.mimeType)) + '\\n');
+      appendFileSync(log + '.files', JSON.stringify(params.prompt.filter(block => block.type === 'resource_link')) + '\\n');
       send({ method: 'session/update', params: { sessionId: params.sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'images:' + images.length } } } });
       send({ id, result: { stopReason: 'end_turn' } });
     } else send({ id, error: { code: -32601, message: 'unsupported ' + method } });
@@ -63,10 +64,13 @@ test('Grok workbench sends pasted images although ACP initialize omits promptCap
   engine = await openGrokWorkbench({ executable, model: 'grok-fixture', effort: 'medium' }, { cwd, neutralCwd: neutral, onEvent: async (type, data) => { events.push({ type, data }); }, onRequest: async () => { throw new Error('unexpected'); }, onExit() {} });
   assert.equal(engine.capabilities.images, true);
   const image = { type: 'image', mimeType: 'image/jpeg', data: Buffer.from('fixture').toString('base64') };
-  const result = await engine.prompt('这个什么问题?', value => deliveries.push(value), [image]);
+  const attachment = { path: path.join(cwd, 'report.pdf'), name: 'report.pdf', mimeType: 'application/pdf', size: 19 };
+  const result = await engine.prompt('这个什么问题?', value => deliveries.push(value), [image], [attachment]);
   assert.equal(result.stopReason, 'end_turn');
   assert.deepEqual(deliveries, ['attempted']);
   assert.deepEqual((await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line)), [['image/jpeg']]);
+  const refs = JSON.parse((await readFile(log + '.files', 'utf8')).trim());
+  assert.equal(refs.length, 1); assert.equal(refs[0].type, 'resource_link'); assert.equal(refs[0].name, 'report.pdf'); assert.equal(refs[0].size, 19); assert.match(refs[0].uri, /^file:\/\//);
   await new Promise(resolve => setTimeout(resolve, 50));
   assert.ok(events.some(event => event.type === 'message.delta' && event.data.text === 'images:1'));
   await t.test('a rejected MCP catalog emits a diagnostic event before any prompt is sent', async () => {

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { workbenchTimeline } from '../../src/shared/domain/agentWorkbench/events.js';
 import { createAcpWorkbenchEvents } from '../../src/agent/engines/acpWorkbenchEvents.js';
+import { createCodexReasoningEvents } from '../../src/agent/engines/codexReasoningEvents.js';
 
 const event = (type, data, seq) => ({ type, data, seq, turnId: 'turn' });
 const turn = { id: 'turn', state: 'completed' };
@@ -89,4 +90,59 @@ test('ACP calls without a status begin queued and partial updates preserve the k
   assert.equal(workbenchTimeline(events, { ...turn, state: 'running' })[0].items[0].data.status, 'queued');
   await emit({ sessionUpdate: 'tool_call_update', toolCallId: 'one', status: 'completed' });
   assert.equal(workbenchTimeline(events, turn)[0].items[0].data.status, 'completed');
+});
+
+test('ACP thoughts stay separate from replies and split at tool and plan boundaries', async () => {
+  const events = [], emit = createAcpWorkbenchEvents((type, data) => events.push(event(type, data, events.length)));
+  const chunk = (sessionUpdate, text) => emit({ sessionUpdate, content: { type: 'text', text } });
+  await chunk('agent_message_chunk', 'Progress');
+  await chunk('agent_thought_chunk', 'Think '); await chunk('agent_thought_chunk', 'first');
+  await chunk('agent_message_chunk', 'Reply');
+  await emit({ sessionUpdate: 'tool_call', toolCallId: 'read', title: 'Read', status: 'completed' });
+  await chunk('agent_thought_chunk', 'Think second');
+  await emit({ sessionUpdate: 'plan', entries: [] });
+  await chunk('agent_thought_chunk', 'Think third');
+  await chunk('agent_thought_chunk', '');
+  const groups = workbenchTimeline(events, turn);
+  assert.deepEqual(groups.map(group => group.items[0].type), ['message.delta', 'reasoning.delta', 'message.delta', 'tool.updated', 'reasoning.delta', 'plan.updated', 'reasoning.delta']);
+  assert.equal(groups[1].items[0].data.text, 'Think first');
+  assert.notEqual(events[0].data.messageId, events[3].data.messageId);
+  assert.equal(new Set(events.filter(value => value.type === 'reasoning.delta').map(value => value.data.messageId)).size, 3);
+});
+
+test('Codex keeps summary/content sections distinct and reconciles completed snapshots without duplicates', async () => {
+  const events = [], emit = createCodexReasoningEvents((type, data) => events.push(event(type, data, events.length)));
+  const delta = (method, index, text, itemId = 'thought') => emit(method, { itemId, summaryIndex: index, contentIndex: index, delta: text });
+  await delta('item/reasoning/summaryTextDelta', 0, 'First');
+  await delta('item/reasoning/summaryTextDelta', 0, ' summary');
+  await emit('item/reasoning/summaryPartAdded', { itemId: 'thought', summaryIndex: 1 });
+  await delta('item/reasoning/summaryTextDelta', 1, 'Draft');
+  await delta('item/reasoning/textDelta', 0, 'Provider content');
+  const before = events.length;
+  await emit('item/completed', { item: { id: 'thought', type: 'reasoning', summary: ['First summary', 'Final section', 'Snapshot only'], content: ['Provider content'] } });
+  assert.equal(events.length, before + 2);
+  const untouched = JSON.stringify(events), groups = workbenchTimeline(events, turn);
+  assert.deepEqual(groups.map(group => group.items[0].data.text), ['First summary', 'Final section', 'Provider content', 'Snapshot only']);
+  assert.equal(groups[0].items[0].data.kind, 'summary');
+  assert.equal(groups[2].items[0].data.kind, 'content');
+  assert.equal(JSON.stringify(events), untouched);
+  assert.deepEqual(workbenchTimeline(events, turn), groups);
+  const nextTurn = [];
+  await createCodexReasoningEvents((type, data) => nextTurn.push({ type, data }))('item/completed', { item: { id: 'thought', type: 'reasoning', summary: ['First summary'] } });
+  assert.equal(nextTurn.length, 1);
+});
+
+test('reasoning snapshots preserve replies, tool order and item identity across interleaved updates', () => {
+  const events = [
+    event('reasoning.delta', { messageId: 'one', text: 'Draft' }, 1),
+    event('tool.updated', { id: 'read', title: 'Read', status: 'completed' }, 2),
+    event('message.delta', { messageId: 'answer', text: 'Answer' }, 3),
+    event('reasoning.updated', { messageId: 'one', text: 'Final thought' }, 4),
+    event('reasoning.updated', { messageId: 'two', kind: 'summary', partIndex: 0, text: 'Snapshot only' }, 5),
+    event('message.delta', { messageId: 'answer', text: ' continued' }, 6),
+    { ...event('reasoning.delta', { messageId: 'one', text: 'Wrong turn' }, 7), turnId: 'other' },
+  ];
+  const groups = workbenchTimeline(events, turn);
+  assert.deepEqual(groups.map(group => group.items[0].data.text || group.items[0].data.title), ['Final thought', 'Read', 'Answer', 'Snapshot only', ' continued']);
+  assert.equal(events[0].data.text, 'Draft');
 });

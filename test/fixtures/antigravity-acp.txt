@@ -24,7 +24,22 @@ readline.createInterface({ input: process.stdin }).on('line', async line => {
   const value = JSON.parse(line);
   if (!value.method) { pending.get(value.id)?.(value.result); pending.delete(value.id); return; }
   const { method, params = {} } = value;
-  if (method === 'initialize') return reply(value.id, { protocolVersion: 1, agentInfo: { name: 'antigravity-acp', version: '1.4.5' }, authMethods: [{ id: 'oauth-personal' }], agentCapabilities: { loadSession: true, promptCapabilities: { image: true } } });
+  if (method === 'initialize') {
+    let startup;
+    try { startup = await readFile(path.join(process.cwd(), '.startup-failure'), 'utf8'); } catch {}
+    if (startup) {
+      let attempts = 0;
+      try { attempts = Number(await readFile(path.join(process.cwd(), '.startup-attempts'), 'utf8')); } catch {}
+      await writeFile(path.join(process.cwd(), '.startup-attempts'), String(++attempts));
+      if (startup === 'refresh-ok') process.stderr.write('Access token expired. Refreshing silently...\n');
+      else if (startup !== 'network-once' || attempts === 1) {
+        const reason = startup === 'auth' ? 'RefreshError: invalid_grant' : startup === 'unknown' ? 'Unexpected startup failure' : 'ConnectionError: connection reset';
+        process.stderr.write(reason + ' token=private-account-secret\n', () => process.exit(17));
+        return;
+      }
+    }
+    return reply(value.id, { protocolVersion: 1, agentInfo: { name: 'antigravity-acp', version: '1.4.5' }, authMethods: [{ id: 'oauth-personal' }], agentCapabilities: { loadSession: true, promptCapabilities: { image: true } } });
+  }
   if (method === 'authenticate') { await writeFile(path.join(process.cwd(), '.authenticated'), 'yes'); return reply(value.id, {}); }
   if (method === 'session/new' || method === 'session/load') {
     try { await access(path.join(process.cwd(), '.authenticated')); } catch { return fail(value.id, -32000, 'Authentication required'); }

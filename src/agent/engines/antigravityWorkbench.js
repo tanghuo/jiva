@@ -1,5 +1,7 @@
 import { createAcpWorkbenchEvents } from './acpWorkbenchEvents.js';
+import { acpFileReferences } from './workbenchFileReferences.js';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { startAntigravityAcp, antigravityVersion } from '../executors/antigravityProcess.js';
 import { acquireExternalResource } from '../executors/resourceGate.js';
 
@@ -23,16 +25,23 @@ async function initialize(client) {
 }
 export async function describeAntigravityWorkbench(settings = {}, { cwd, signal, authenticate = false } = {}) {
   const release = await acquireExternalResource('antigravity', signal);
-  let client;
   try {
-    client = await startAntigravityAcp(settings, { cwd, signal });
-    const init = await initialize(client);
-    if (authenticate) {
-      if (!init.authMethods?.some(method => method.id === 'oauth-personal')) throw new Error('此 Antigravity 不支持个人 Google 账号认证');
-      await client.request('authenticate', { methodId: 'oauth-personal' }, 180000);
+    for (let attempt = 0; ; attempt++) {
+      let client;
+      try {
+        client = await startAntigravityAcp(settings, { cwd, signal });
+        const init = await initialize(client);
+        if (authenticate) {
+          if (!init.authMethods?.some(method => method.id === 'oauth-personal')) throw new Error('此 Antigravity 不支持个人 Google 账号认证');
+          await client.request('authenticate', { methodId: 'oauth-personal' }, 180000);
+        }
+        return antigravityModels(await client.request('session/new', { cwd, mcpServers: [] }, 60000));
+      } catch (error) {
+        if (authenticate || attempt || error.code !== 'ACP_PROCESS_EXIT' || signal?.aborted) throw error;
+      } finally { await client?.close(); }
+      await delay(500, undefined, { signal });
     }
-    return antigravityModels(await client.request('session/new', { cwd, mcpServers: [] }, 60000));
-  } finally { await client?.close(); release(); }
+  } finally { release(); }
 }
 
 export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sessionId, signal, onRequest, onEvent, onExit, restricted = false, approvalMode = 'ask', tools = [] }) {
@@ -47,7 +56,7 @@ export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sess
       async onNotification(method, params) {
         if (!prompting || closed || params.sessionId !== thread || method !== 'session/update') return;
         const value = params.update || {};
-        if (['agent_message_chunk', 'plan'].includes(value.sessionUpdate)) return emitUpdate(value);
+        if (['agent_message_chunk', 'agent_thought_chunk', 'plan'].includes(value.sessionUpdate)) return emitUpdate(value);
         if (value.sessionUpdate === 'config_option_update') {
           for (const option of value.configOptions || []) {
             if (option.id === 'mode' && option.currentValue !== nativeMode || option.id === 'model' && option.currentValue !== settings.model) throw new Error('Antigravity 在执行中切换了模型或审批模式，请核查结果');
@@ -105,7 +114,7 @@ export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sess
     return {
       sessionId: thread, version: `antigravity-acp ${init.agentInfo.version}`,
       capabilities: { verified: true, approvalMode, approval: 'native', fileReads: 'native', osSandbox: false, applicationTools: false, resume: true, images: init.agentCapabilities?.promptCapabilities?.image === true, model: settings.model, effort: effort || 'model_default' },
-      async prompt(text, onDelivery = () => {}, images = []) {
+      async prompt(text, onDelivery = () => {}, images = [], files = []) {
         if (closed || prompting) throw new Error('Antigravity 会话不可发送');
         if (images.length && init.agentCapabilities?.promptCapabilities?.image !== true) throw new Error('Antigravity 未声明支持图片输入，任务未发送；请移除参考图后重试，或改用 Grok Build');
         await onEvent('resource.queued', {});
@@ -113,7 +122,7 @@ export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sess
         try {
           await onEvent('resource.acquired', {}); signal?.throwIfAborted();
           prompting = true; calls.clear(); onDelivery('attempted');
-          const result = await client.request('session/prompt', { sessionId: thread, prompt: [{ type: 'text', text }, ...images] }, 30 * 60 * 1000);
+          const result = await client.request('session/prompt', { sessionId: thread, prompt: [{ type: 'text', text }, ...images, ...acpFileReferences(files)] }, 30 * 60 * 1000);
           if (!['end_turn', 'cancelled'].includes(result.stopReason)) throw new Error(`Antigravity 轮次未正常结束：${result.stopReason}`);
           return result;
         } finally { prompting = false; release(); }

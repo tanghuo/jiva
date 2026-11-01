@@ -49,7 +49,9 @@ export async function createQuotaService({ repo, dataDir, executionConfig, reade
     const generatedAt=now(), accounts=[];
     const sources=saved.sources.map(source => {
       const state=repo.state(source.sourceId);
-      if(state?.accountKey) { const current=repo.current(source.sourceId,state.accountKey); if(current) accounts.push(current); }
+      const job=jobs.get(source.sourceId);
+      const current=state?.accountKey?repo.current(source.sourceId,state.accountKey):job?.generation===source.generation?job.previousAccount:null;
+      if(current) accounts.push(current);
       const {fingerprint,accountKey,...publicState}=state || {};
       return {...publicState,sourceId:source.sourceId,provider:source.provider,product:source.product,label:source.label,enabled:source.enabled,
         configured:true,dirty:dirty.has(source.sourceId),state:source.enabled ? state?.state || 'not_configured' : 'disabled',cliConfigured:Boolean(source.cliPath)};
@@ -89,13 +91,17 @@ export async function createQuotaService({ repo, dataDir, executionConfig, reade
     const controller=new AbortController(); controllers.add(controller);
     const timeout=setTimeout(()=>controller.abort(new Error('TIMEOUT')),source.provider==='gemini'?90000:30000);
     const state={...repo.state(source.sourceId),lastAttemptAt:now()};
-    // A newly spawned unverified session cannot inherit an earlier process's identity.
-    if(state.identityStatus==='unverified')state.accountKey=null;
+    // Keep the previous reading visible during the probe, without binding the new
+    // unverified session to its identity. Discard this display fallback on failure.
+    if(state.identityStatus==='unverified'){
+      job.previousAccount=state.accountKey?repo.current(source.sourceId,state.accountKey):null;
+      state.accountKey=null;
+    }
     try {
       repo.saveState(state);publish();
       const result=await readers[source.provider](providerConfig(source),{cwd,signal:controller.signal,salt:saved.salt,sessionKey:sessionKeys.get(source.sourceId),onIdentity(identity){
         if(closed||generation!==saved.sources.find(s=>s.sourceId===source.sourceId)?.generation)return;
-        if(state.accountKey!==identity.accountKey){state.accountKey=null;state.lastSuccessAt=null;repo.saveState(state);publish();}
+        if(state.accountKey!==identity.accountKey){job.previousAccount=null;state.accountKey=null;state.lastSuccessAt=null;repo.saveState(state);publish();}
       }});
       syncSources();
       if(closed || generation!==saved.sources.find(s=>s.sourceId===source.sourceId)?.generation || controller.signal.aborted) return;
@@ -105,6 +111,7 @@ export async function createQuotaService({ repo, dataDir, executionConfig, reade
       if(!job.invalidated) dirty.delete(source.sourceId);
       clean();
     } catch(error) {
+      job.previousAccount=null;
       if(closed || generation!==saved.sources.find(s=>s.sourceId===source.sourceId)?.generation) return;
       const code=error.code===-32601?'UNSUPPORTED':controller.signal.aborted?'TIMEOUT':Object.hasOwn(messages,error.code)?error.code:'READ_FAILED';
       const failureCount=(state.failureCount||0)+1;

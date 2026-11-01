@@ -9,6 +9,7 @@ import { createGrokSdkTools } from './grokSdkTools.js';
 import { verifyWorkbenchMcpCatalog } from './grokMcpPolicy.js';
 import { randomUUID } from 'node:crypto';
 import { approvalMode } from '../../shared/domain/agentWorkbench/approvalPolicy.js';
+import { acpFileReferences } from './workbenchFileReferences.js';
 
 export function grokApprovalPolicy(mode = 'ask', restricted = false) {
   mode = restricted ? 'ask' : approvalMode(mode);
@@ -62,7 +63,7 @@ export async function openGrokWorkbench(settings, { cwd, neutralCwd, sessionId, 
     client = await startGrokAcp({ ...settings, agentProfileName: profile.name, permissionMode: policy.autoMode ? 'auto' : policy.yoloMode ? 'bypassPermissions' : 'default' }, { cwd: neutralCwd, signal, onExit, pausePromptTimeoutOnRequest: true, onNotification(method, params) {
       if (!prompting || params.sessionId !== thread || method !== 'session/update') return;
       const value = params.update || {};
-      if (['agent_message_chunk', 'plan'].includes(value.sessionUpdate)) return emitUpdate(value);
+      if (['agent_message_chunk', 'agent_thought_chunk', 'plan'].includes(value.sessionUpdate)) return emitUpdate(value);
       if (['tool_call', 'tool_call_update'].includes(value.sessionUpdate)) return emitUpdate(value);
       return onEvent('engine.extension', { namespace: 'grok', type: String(value.sessionUpdate || '').slice(0, 100) });
     }, async onRequest(method, params) {
@@ -131,7 +132,7 @@ export async function openGrokWorkbench(settings, { cwd, neutralCwd, sessionId, 
     if (actualModel !== settings.model || effort && actualEffort !== effort) throw new Error('Grok 模型或推理强度未按配置生效，已停止发送任务');
     return {
       sessionId: thread, version, capabilities: { model: actualModel, effort: actualEffort, clientFiles: !restricted, clientTerminal: !restricted, images: true, approval: 'host', approvalMode: policy.mode, osSandbox: false, restricted, applicationTools, ...verification },
-      async prompt(text, onDelivery = () => {}, images = []) {
+      async prompt(text, onDelivery = () => {}, images = [], files = []) {
         // Grok Build's ACP `initialize` advertises only embeddedContext, so
         // promptCapabilities.image is false, yet `session/prompt` forwards inline
         // image blocks to the model (xai-org/grok-build acp_agent.rs). Gating on
@@ -141,7 +142,7 @@ export async function openGrokWorkbench(settings, { cwd, neutralCwd, sessionId, 
         try {
           await onEvent('resource.acquired', {});
           signal?.throwIfAborted(); await verifyTools('before_prompt'); prompting = true; sdk?.begin({ sessionId: thread, turnId: randomUUID() }); onDelivery('attempted');
-          const result = await client.request('session/prompt', { sessionId: thread, prompt: [{ type: 'text', text }, ...images] }, 30 * 60 * 1000);
+          const result = await client.request('session/prompt', { sessionId: thread, prompt: [{ type: 'text', text }, ...images, ...acpFileReferences(files)] }, 30 * 60 * 1000);
           if (restricted && !applicationTools) await verifyGrokWorkbenchProfile({ cwd, sessionId: thread, profile, explicitlySelected: true, requireEmptyTools: true });
           return result;
         } finally { prompting = false; sdk?.end(); release(); }

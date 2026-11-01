@@ -24,8 +24,8 @@ export default function useWorkbenchDraft(sessionId, onError) {
     });
     entry.queue = operation; return operation;
   }
-  function update(change) {
-    const id = current.current, entry = entries.current.get(id); if (!entry) return;
+  function update(change, id = current.current) {
+    const entry = entries.current.get(id); if (!entry) return;
     Object.assign(entry, change); entry.edit++; notify();
     clearTimeout(timers.current.get(id));
     timers.current.set(id, setTimeout(() => { flush(id).catch(error => onError(error.message)); }, 500));

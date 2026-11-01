@@ -33,9 +33,14 @@ test('Antigravity reuses authentication, verifies manual mode and model/effort, 
   assert.equal((await describeAntigravityWorkbench(f.settings, f.callbacks)).defaultModel, 'fixture-model');
   const client = await f.open();
   assert.equal(client.capabilities.approvalMode, 'ask'); assert.equal(client.capabilities.effort, 'medium'); assert.equal(client.capabilities.applicationTools, false);
-  assert.equal((await client.prompt('REMEMBER bamboo42', () => {}, [{ type: 'image', mimeType: 'image/png', data: 'aGVsbG8=' }])).stopReason, 'end_turn');
+  const attachment = { path: path.join(f.root, '报告.pdf'), name: '报告.pdf', mimeType: 'application/pdf', size: 12 };
+  assert.equal((await client.prompt('REMEMBER bamboo42', () => {}, [{ type: 'image', mimeType: 'image/png', data: 'aGVsbG8=' }], [attachment])).stopReason, 'end_turn');
   const prompt = JSON.parse(await readFile(path.join(f.root, 'last-prompt.json'), 'utf8'));
   assert.equal(prompt.prompt[1].type, 'image');
+  assert.equal(prompt.prompt[2].type, 'resource_link');
+  assert.equal(prompt.prompt[2].name, '报告.pdf');
+  assert.equal(prompt.prompt[2].mimeType, 'application/pdf');
+  assert.match(prompt.prompt[2].uri, /^file:\/\//);
   await client.close();
   const restored = await f.open({}, { sessionId: client.sessionId });
   await restored.prompt('RECALL');
@@ -54,6 +59,56 @@ test('Antigravity authentication is explicit and model detection never silently 
   const connected = await describeAntigravityWorkbench(f.settings, { ...f.callbacks, authenticate: true });
   assert.equal(connected.models[0].id, 'fixture-model');
   const client = await f.open(); await client.prompt('hello');
+});
+
+test('Antigravity model detection recovers from one process exit without logging in', async t => {
+  const f = await fixture(t);
+  await writeFile(path.join(f.root, '.startup-failure'), 'network-once');
+  assert.equal((await describeAntigravityWorkbench(f.settings, f.callbacks)).defaultModel, 'fixture-model');
+  assert.equal(await readFile(path.join(f.root, '.startup-attempts'), 'utf8'), '2');
+});
+
+test('Antigravity startup failure is bounded, diagnosed and never exposes raw stderr', async t => {
+  for (const [mode, attempts, code, reason] of [
+    ['network', '2', 'ACP_PROCESS_EXIT', /网络连接失败/],
+    ['auth', '1', 'AUTH_REQUIRED', /授权已失效/],
+    ['unknown', '2', 'ACP_PROCESS_EXIT', /未识别的进程错误/],
+  ]) await t.test(mode, async t => {
+    const f = await fixture(t);
+    await writeFile(path.join(f.root, '.startup-failure'), mode);
+    await assert.rejects(describeAntigravityWorkbench(f.settings, f.callbacks), error => {
+      assert.equal(error.code, code);
+      assert.match(error.message, reason);
+      assert.match(error.message, /initialize.*17/);
+      assert.ok(!error.message.includes('private-account-secret'));
+      return true;
+    });
+    assert.equal(await readFile(path.join(f.root, '.startup-attempts'), 'utf8'), attempts);
+  });
+});
+
+test('Antigravity successful silent refresh is not treated as a startup failure', async t => {
+  const f = await fixture(t);
+  await writeFile(path.join(f.root, '.startup-failure'), 'refresh-ok');
+  assert.equal((await describeAntigravityWorkbench(f.settings, f.callbacks)).defaultModel, 'fixture-model');
+  assert.equal(await readFile(path.join(f.root, '.startup-attempts'), 'utf8'), '1');
+});
+
+test('Antigravity account connection and cancellation never restart a failed process', async t => {
+  const f = await fixture(t);
+  await writeFile(path.join(f.root, '.startup-failure'), 'network');
+  await assert.rejects(describeAntigravityWorkbench(f.settings, { ...f.callbacks, authenticate: true }), { code: 'ACP_PROCESS_EXIT' });
+  assert.equal(await readFile(path.join(f.root, '.startup-attempts'), 'utf8'), '1');
+  const controller = new AbortController();
+  const pending = describeAntigravityWorkbench(f.settings, { ...f.callbacks, signal: controller.signal });
+  // Abort during the recovery delay, after observing the failed attempt.
+  for (;;) {
+    if (await readFile(path.join(f.root, '.startup-attempts'), 'utf8') === '2') break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  controller.abort();
+  await assert.rejects(pending);
+  assert.equal(await readFile(path.join(f.root, '.startup-attempts'), 'utf8'), '2');
 });
 
 test('Antigravity uses native auto-edit and yolo modes and reapplies policy on restore', async t => {

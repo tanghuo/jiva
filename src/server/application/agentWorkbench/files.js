@@ -11,10 +11,10 @@ function decode(bytes) {
   try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
   catch { throw agentError('UNSUPPORTED_FILE', '文件不是 UTF-8 文本，不会自动转码'); }
 }
-export function createFileGateway({ workspace, readRoots = [], approve, assertLive, onChange }) {
+export function createFileGateway({ workspace, readRoots = [], readFiles = () => [], approve, assertLive, onChange }) {
   const roots = [workspace.path, ...readRoots];
   async function target(value, write = false) {
-    const file = localPath(value), root = (write ? [workspace.path] : roots).find(root => containsPath(root, file));
+    const file = localPath(value), root = (write ? [workspace.path] : roots).find(root => containsPath(root, file)) || (!write && readFiles().some(allowed => pathIdentity(allowed) === pathIdentity(file)) ? path.dirname(file) : null);
     if (!root) throw agentError('PATH_DENIED', '路径不在授权范围内', 403);
     if (pathIdentity(await realpath(root)) !== pathIdentity(root)) throw agentError('PATH_CHANGED', '授权根已变化', 409);
     const parts = path.relative(root, file).split(path.sep).filter(Boolean);

@@ -102,6 +102,7 @@ export default function QuotaFloat({quota,position='left',hidden=false}) {
   const pinLabel=item=>item.source?.provider==='gemini'&&item.bucket?compactLabel(item.bucket.label):`${item.source?.provider==='grok'?'Grok':item.source?.provider==='codex'?'Codex':item.source?.provider==='gemini'?'Antigravity':'额度项'} · ${item.bucket?compactLabel(item.bucket.label).replace(/^codex · |^Grok · /i,''):'待更新'}`;
   const pinPlatform=item=>item.source?.provider==='codex'?'Codex':item.source?.provider==='grok'?'Grok':item.source?.provider==='gemini'?compactLabel(item.bucket?.label||'').includes('Claude / GPT')?'Claude/GPT':'Gemini':'额度项';
   const pinWindow=item=>compactLabel(item.bucket?.label||'待更新').match(/每周额度|5 小时额度/)?.[0]||compactLabel(item.bucket?.label||'待更新').replace(/^codex · |^Grok · /i,'');
+  const pinShortLabel=item=>{const platform=pinPlatform(item),window=pinWindow(item);if(window==='每周额度')return `${platform}周`;if(window==='5 小时额度')return `${platform} 5h`;if(item.source?.provider==='gemini'||!item.bucket||window==='待更新')return platform;return `${platform} ${window.replace(/额度$/,'')}`.trim();};
   const windowLabel=tightest?.windowMinutes===10080?'每周额度':tightest?.windowMinutes===300?'5 小时额度':tightest?.windowMinutes?`${Math.round(tightest.windowMinutes)} 分钟额度`:compactLabel(tightest?.label||'').match(/每周额度|5 小时额度/)?.[0]||'额度';
   const shortProvider=tightest?.provider==='gemini'?'Gemini':tightest?.provider==='grok'?'Grok':'Codex';
   const text=tightest?`${shortProvider} · ${tightest.reached?'额度组已到上限':`${windowLabel} · 剩 ${Math.round(tightest.remainingPercent)}%`}`:'额度待更新';
@@ -118,11 +119,14 @@ export default function QuotaFloat({quota,position='left',hidden=false}) {
       <footer className="quota-panel-footer">{pins.length?<button type="button" onClick={()=>setQuotaPreferences({pins:[]})}>恢复自动选择</button>:<span>未勾选时自动显示最紧张额度</span>}<button type="button" disabled={refreshingSources.length>0} onClick={()=>quota.refresh()}><RefreshCw size={12}/>刷新全部</button></footer></div>}
     <button ref={trigger} type="button" {...dragHandlers} className={`quota-capsule ${pins.length?'is-multi':tightest?.reached||tightest?.remainingPercent<5?'quota-danger':tightest?.remainingPercent<20?'quota-warning':''}`} aria-expanded={open} aria-controls="quota-float-panel" aria-label={`${pins.length?pinned.map(item=>`${pinLabel(item)} · ${bucketValue(item.bucket)}${item.bucket?.stale?' · 待更新':''}`).join('；'):text}${partial?' · 部分未更新':''}`} title="点击展开额度详情，拖动可调整位置" onClick={event=>{if(suppressClick.current&&event.detail>0){suppressClick.current=false;return;}suppressClick.current=false;setOpen(v=>!v);}}>
       {pins.length?<>
-        <span className="quota-compact-heading"><span><GripVertical className="quota-grip" size={12}/>账号额度</span><span>剩余{partial&&<span className="quota-partial-dot" title="部分未更新"/>}<ChevronDown size={13} className={open?'is-open':''}/></span></span>
-        <span className="quota-pinned-items">{pinned.map(item=><span key={JSON.stringify([item.sourceId,item.bucketId])} className={`quota-pinned-item ${item.bucket?.stale?'is-stale':''}`} title={pinLabel(item)}>
-          <span className="quota-row-provider">{pinPlatform(item)}</span><span className="quota-row-window">{pinWindow(item)}{item.bucket?.label.includes('共享')&&<small className="quota-row-shared">共享</small>}</span>
-          <strong className={item.bucket?.remainingPercent!==null&&item.bucket?.remainingPercent<5?'quota-danger':item.bucket?.remainingPercent!==null&&item.bucket?.remainingPercent<20?'quota-warning':''}>{bucketValue(item.bucket).replace(/^剩 /,'')}{item.bucket?.stale&&<small>待更新</small>}</strong>
-        </span>)}</span>
+        <span className="quota-pinned-items">{pinned.map(item=>{
+          const percent=item.bucket?.remainingPercent, reached=percent===0, level=percent==null?null:reached||percent<5?'danger':percent<20?'warning':'normal';
+          const value=!item.bucket?'待更新':reached?'已到上限':percent!=null?`${Math.round(percent)}%`:bucketValue(item.bucket);
+          return <span key={JSON.stringify([item.sourceId,item.bucketId])} className={`quota-pinned-item${item.bucket?.stale?' is-stale':''}`} data-level={level||undefined} title={pinLabel(item)}>
+            <span className="quota-pill-main"><span className="quota-pill-label">{pinShortLabel(item)}</span><strong>{value}{item.bucket?.stale&&<small>待更新</small>}</strong></span>
+            {percent!=null&&<span className="quota-pill-track" aria-hidden="true"><span className="quota-pill-fill" style={{width:`${Math.max(0,Math.min(100,percent))}%`}}/></span>}
+          </span>;
+        })}</span>
       </>:<><GripVertical className="quota-grip" size={13}/><span className="quota-status-dot"/><span className="quota-capsule-text">{text}</span>{partial&&<span className="quota-partial-dot" title="部分未更新"/>}<ChevronDown size={13} className={open?'is-open':''}/></>}
     </button>
   </aside>;

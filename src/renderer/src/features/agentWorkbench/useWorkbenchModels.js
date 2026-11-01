@@ -10,7 +10,7 @@ export default function useWorkbenchModels(engines, enabled) {
   const load = useCallback((engine, retry = false, authenticate = false) => {
     if (!engine) return Promise.resolve(null);
     const previous = entries.current.get(engine);
-    if (previous && (!retry || previous.loading)) return previous.promise || Promise.resolve(previous.value);
+    if (previous && (previous.loading || !retry && (!previous.failed || previous.authRequired))) return previous.promise || Promise.resolve(previous.value);
     const entry = { value: previous?.value, loading: true, authRequired: previous?.authRequired || false, controller: new AbortController() };
     entries.current.set(engine, entry);
     publish(engine, entry, { models: previous?.value?.models || [], loading: true, connecting: authenticate, authRequired: entry.authRequired, error: '' });
@@ -20,6 +20,7 @@ export default function useWorkbenchModels(engines, enabled) {
       publish(engine, entry, { ...value, loading: false, error: '' });
       return value;
     }).catch(error => {
+      entry.failed = true;
       entry.authRequired = error.code === 'AUTH_REQUIRED' || (authenticate && entry.authRequired);
       if (!entry.controller.signal.aborted) publish(engine, entry, { models: previous?.value?.models || [], loading: false, authRequired: entry.authRequired, error: error.message });
       return null;

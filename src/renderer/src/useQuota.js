@@ -1,5 +1,6 @@
 import { useCallback,useEffect,useRef,useState } from 'react';
 import { apiUrl,request } from './api.js';
+const refreshIntervalMs=3*60000;
 export default function useQuota(enabled,{collect=true}={}) {
   const [snapshot,setSnapshot]=useState(null),[error,setError]=useState('');
   const lastRequested=useRef(0),alive=useRef(true),retiredEpochs=useRef(new Set());
@@ -25,10 +26,10 @@ export default function useQuota(enabled,{collect=true}={}) {
       stream=new EventSource(apiUrl(`/api/quota/events?collect=${collect?'1':'0'}`));
       stream.addEventListener('snapshot',event=>{try{apply(JSON.parse(event.data));setError('');}catch{/* Reconnection supplies a full snapshot. */}});
       stream.onerror=()=>{if(!cancelled)setError('额度连接中断，正在重连');};
-      if(collect)timer=setInterval(()=>{void refresh(undefined,'interval');},15*60000);
+      if(collect)timer=setInterval(()=>{void refresh(undefined,'interval');},refreshIntervalMs);
       try {
         const next=await request('/api/quota');if(cancelled)return;apply(next);
-        if(collect&&document.visibilityState!=='hidden'&&(force||Date.now()-lastRequested.current>=15*60000||next.sources.some(s=>s.dirty)))void refresh(undefined,'open');
+        if(collect&&document.visibilityState!=='hidden'&&(force||Date.now()-lastRequested.current>=refreshIntervalMs||next.sources.some(s=>s.dirty)))void refresh(undefined,'open');
       } catch(e){if(!cancelled)setError(e.message);}
     };
     const visibility=()=>{if(document.visibilityState==='hidden')stop();else void start();};

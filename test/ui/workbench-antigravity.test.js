@@ -134,3 +134,39 @@ test('Antigravity login appears only for authentication errors and connection fa
   assert.equal(await page.getByLabel('任务内容').inputValue(), '保留这条草稿');
   assert.equal(loginRequests, 2);
 });
+
+test('reopening Antigravity models recovers a failed catalog and clears the old error without login', { timeout: 30000, skip: !executablePath }, async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-antigravity-reopen-ui-'));
+  let app, browser, attempts = 0, loginRequests = 0;
+  t.after(async () => {
+    await browser?.close(); await app?.close();
+    assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-antigravity-reopen-ui-'));
+    await rm(root, { recursive: true, force: true, maxRetries: 3 });
+  });
+  app = await createServer({ port: 0, dataDir: root, agentWorkbenchEnabled: true });
+  browser = await chromium.launch({ executablePath, headless: true });
+  const page = await browser.newPage();
+  await stubWorkbenchModels(page);
+  await page.route('**/api/agent/engines/antigravity-acp/models', route => {
+    if (++attempts <= 2) return route.fulfill({ status: 503, json: { error: 'Antigravity ACP 进程已退出', code: 'ACP_PROCESS_EXIT' } });
+    return route.fulfill({ json: { models: [{ id: 'recovered-model', label: 'Recovered Gemini' }], defaultModel: 'recovered-model' } });
+  });
+  await page.route('**/api/agent/engines/antigravity-acp/connect', route => { loginRequests++; return route.abort(); });
+  const failed = page.waitForResponse('**/api/agent/engines/antigravity-acp/models');
+  await page.goto(app.url + '#workbench'); await failed;
+  await page.getByLabel('任务内容').fill('恢复后保留草稿');
+  const picker = page.getByLabel('选择模型与推理强度');
+  await picker.click();
+  await page.getByRole('button', { name: 'Antigravity', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'Antigravity ACP 进程已退出' }).waitFor();
+  await picker.click();
+  await picker.click();
+  await page.getByRole('button', { name: 'Recovered Gemini', exact: true }).waitFor();
+  assert.equal(await page.getByRole('alert').count(), 0);
+  assert.equal(attempts, 3);
+  await picker.click(); await picker.click();
+  await page.getByRole('button', { name: 'Recovered Gemini', exact: true }).waitFor();
+  assert.equal(attempts, 3, 'successful catalogs remain cached');
+  assert.equal(loginRequests, 0);
+  assert.equal(await page.getByLabel('任务内容').inputValue(), '恢复后保留草稿');
+});

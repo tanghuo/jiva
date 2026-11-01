@@ -16,13 +16,13 @@ export function text(res, status, payload, contentType = "text/plain; charset=ut
   res.end(payload);
 }
 
-export async function readImage(req) {
-  if (Number(req.headers["content-length"]) > maxImageBytes) { req.resume(); throw httpError(413, "图片必须在 25 MiB 以内"); }
+export async function readImage(req, { maxBytes = maxImageBytes, limitMessage = "图片必须在 25 MiB 以内" } = {}) {
+  if (Number(req.headers["content-length"]) > maxBytes) { req.resume(); throw httpError(413, limitMessage); }
   const chunks = [];
   let size = 0;
   for await (const chunk of req.iterator({ destroyOnReturn: false })) {
     size += chunk.length;
-    if (size > maxImageBytes) { req.resume(); throw httpError(413, "图片必须在 25 MiB 以内"); }
+    if (size > maxBytes) { req.resume(); throw httpError(413, limitMessage); }
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);

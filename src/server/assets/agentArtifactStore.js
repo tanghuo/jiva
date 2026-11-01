@@ -3,12 +3,31 @@ import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
 import sharp from 'sharp';
 import { agentError } from '../../shared/domain/agentWorkbench/contracts.js';
+import { attachmentKind, attachmentError } from '../../shared/domain/agentWorkbench/attachments.js';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export function createAgentArtifactStore(dataDir) {
   const root = path.join(dataDir, 'agent-artifacts'), staging = path.join(root, 'staging'), objects = path.join(root, 'objects');
-  function location(key) { if (!/^[a-f0-9]{64}-[a-f0-9-]{36}\.(png|jpeg|webp|txt)$/.test(key)) throw agentError('INVALID_STORAGE_KEY', '无效的产物存储标识'); return path.join(objects, key); }
+  function location(key) { if (!/^[a-f0-9]{64}-[a-f0-9-]{36}\.[a-z0-9]{1,12}$/.test(key)) throw agentError('INVALID_STORAGE_KEY', '无效的产物存储标识'); return path.join(objects, key); }
   return {
+    async saveAttachment(bytes, file) {
+      const problem = attachmentError([{ ...file, size: bytes.length }]);
+      if (problem) throw agentError('INVALID_ATTACHMENT', problem);
+      const metadata = { source: 'user', filename: file.name };
+      const kind = attachmentKind(file);
+      if (kind === 'image') return this.saveImage(bytes, metadata);
+      const extension = /\.([a-z0-9]{1,12})$/i.exec(file.name)?.[1].toLowerCase() || 'bin';
+      const digest = hash(bytes), storageKey = `${digest}-${randomUUID()}.${extension}`;
+      await mkdir(staging, { recursive: true }); await mkdir(objects, { recursive: true });
+      const temp = path.join(staging, `${randomUUID()}.tmp`);
+      try { await writeFile(temp, bytes, { flag: 'wx' }); await rename(temp, location(storageKey)); }
+      finally { await rm(temp, { force: true }); }
+      return { type: 'file', storageKey, hash: digest, byteSize: bytes.length, mimeType: kind === 'pdf' ? 'application/pdf' : file.type || 'application/octet-stream', producer: 'user-upload', metadata };
+    },
+    async fileReference(artifact) {
+      await this.read(artifact);
+      return { path: location(artifact.storageKey), name: artifact.metadata.filename || artifact.storageKey, mimeType: artifact.mimeType, size: artifact.byteSize };
+    },
     async saveText(text, metadata = {}) {
       const bytes = Buffer.from(text);
       if (bytes.length > 2 * 1024 * 1024) throw agentError('ARTIFACT_LIMIT', '文字产物超过 2 MiB');
