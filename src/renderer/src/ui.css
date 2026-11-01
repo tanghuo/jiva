@@ -175,8 +175,15 @@ button[aria-busy="true"] { cursor: progress; }
 
 /* ---------- FloatingLayer: title + search on top, actions top-right, filters in a bottom capsule ----------
    Lives inside the page column (sticky or absolute against its own box), never against the viewport,
-   so the layout is identical with the Agent dock open and on narrow windows. */
+   so the layout is identical with the Agent dock open and on narrow windows.
+   Sticky mode fills the visible main column so a short library still parks the capsule at the bottom;
+   long lists keep position:sticky so the capsule pins while scrolling. Overlay mode (canvas) is unchanged. */
 .ui-float-layer { position: relative; min-width: 0; }
+.ui-float-layer.is-sticky {
+  display: flex; flex-direction: column;
+  /* wiki-main padding: page-pad-top + sp-12 (shell.css). Keep the layer inside the page column. */
+  min-height: calc(100dvh - var(--page-pad-top) - var(--sp-12));
+}
 .ui-float-top {
   position: sticky; top: var(--sp-2); z-index: 14;
   display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(160px, 470px) minmax(max-content, 1fr); align-items: center; gap: var(--sp-3);
@@ -191,8 +198,8 @@ button[aria-busy="true"] { cursor: progress; }
 .ui-float-search:empty { visibility: hidden; }
 .ui-float-search > .wiki-search { width: 100%; border-radius: var(--r-pill, 999px); background: var(--glass-bg-strong, color-mix(in srgb, var(--panel) 88%, transparent)); backdrop-filter: blur(18px) saturate(1.3); box-shadow: var(--e-2, var(--e-1)); }
 .ui-float-actions { justify-self: end; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--sp-2); }
-.ui-float-content { min-width: 0; }
-.ui-float-bottom { position: sticky; bottom: var(--sp-4); z-index: 14; display: flex; justify-content: center; margin-top: var(--sp-4); pointer-events: none; }
+.ui-float-content { flex: 1 1 auto; min-width: 0; }
+.ui-float-bottom { position: sticky; bottom: var(--sp-4); z-index: 14; display: flex; justify-content: center; margin-top: auto; pointer-events: none; }
 .ui-float-capsule {
   pointer-events: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--sp-2);
   max-width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 22px;

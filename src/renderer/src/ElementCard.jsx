@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { BookOpen, Copy, FileText, ImageIcon, RotateCcw } from "lucide-react";
+import { BookOpen, Copy, ImageIcon, RotateCcw } from "lucide-react";
 import { preloadImage } from "./imagePreload.js";
 import VideoCardPreview from "./VideoCardPreview.jsx";
 import { apiUrl } from "./api.js";
@@ -14,19 +14,62 @@ const NOTE_TINTS = {
   "生活": "mint", "咖啡": "mint", "菜谱": "mint",
   "阅读": "lavender", "摘录": "lavender",
   "猫": "butter", "宠物": "butter",
+  "提示词": "neutral", "prompt": "neutral", "Prompt": "neutral",
+  "资料": "butter",
 };
-function noteTint(tags = []) {
+
+const PROMPT_TAG_KEYS = ["提示词", "prompt"];
+const MATERIAL_TAG_KEYS = ["资料"];
+
+function tagMatches(tags = [], keys) {
+  return tags.some((tag) => keys.some((key) => tag === key || tag.toLowerCase?.() === key.toLowerCase() || tag.includes(key)));
+}
+
+function noteFace(element) {
+  const tags = element.tags || [];
+  if (tagMatches(tags, PROMPT_TAG_KEYS)) return "prompt";
+  if (element.material || tagMatches(tags, MATERIAL_TAG_KEYS)) return "material";
+  return "note";
+}
+
+function noteTint(tags = [], face) {
+  if (face === "prompt") return "neutral";
+  // Materials stay on butter/paper so they stay distinct from excerpt lavender notes.
+  if (face === "material") return "butter";
   for (const tag of tags) {
     if (NOTE_TINTS[tag]) return NOTE_TINTS[tag];
     for (const [key, tint] of Object.entries(NOTE_TINTS)) if (tag.includes(key)) return tint;
   }
   return "neutral";
 }
-function noteTitle(element, fallback) {
+
+function noteHeading(element, fallback) {
+  const explicit = String(element.title || "").trim();
+  if (explicit) return explicit.length > 40 ? `${explicit.slice(0, 40)}…` : explicit;
   const body = (element.body || "").trim();
   if (!body) return fallback;
-  const line = body.split(/\n/).find((part) => part.trim()) || fallback;
-  return line.length > 28 ? `${line.slice(0, 28)}…` : line;
+  const line = (body.split(/\n/).find((part) => part.trim()) || fallback).trim();
+  const cut = line.search(/[，。！？,.!?；;]/);
+  const sentence = (cut >= 0 ? line.slice(0, cut) : line).trim() || line;
+  return sentence.length > 40 ? `${sentence.slice(0, 40)}…` : sentence;
+}
+
+function noteBodyPreview(element, heading) {
+  const body = (element.body || "").trim();
+  if (!body) return "";
+  const clipped = heading.endsWith("…") ? heading.slice(0, -1) : heading;
+  let rest = body;
+  if (rest === heading || rest === clipped) return "";
+  if (clipped && rest.startsWith(clipped)) {
+    rest = rest.slice(clipped.length).replace(/^[，。！？,.!?\s；;：:]+/, "").trim();
+  } else if (heading && rest.startsWith(heading)) {
+    rest = rest.slice(heading.length).replace(/^[，。！？,.!?\s；;：:]+/, "").trim();
+  }
+  const lines = rest.split(/\n/);
+  if (lines[0] && (lines[0].trim() === clipped || lines[0].trim() === heading)) {
+    rest = lines.slice(1).join("\n").trim();
+  }
+  return rest;
 }
 
 export default function ElementCard({ element, onOpen, onRestore, onSelect, selected = false, disabled, loading = "lazy" }) {
@@ -75,17 +118,19 @@ export default function ElementCard({ element, onOpen, onRestore, onSelect, sele
     setPreview("ready");
   }
   const pending = canPreview && preview === "loading";
-  const tint = element.kind === "text" ? noteTint(element.tags) : undefined;
-  return <article data-element-id={element.id} data-note-tint={tint} ref={card} className={`wiki-card is-${element.kind} ${element.material ? "has-material" : ""} ${element.deletedAt ? "is-trashed" : ""} ${selected ? "is-selected" : ""} ${pending ? "is-loading" : ""}`} aria-busy={pending || undefined}>
+  const face = element.kind === "text" ? noteFace(element) : undefined;
+  const tint = element.kind === "text" ? noteTint(element.tags, face) : undefined;
+  const faceClass = face === "prompt" ? " is-prompt" : face === "material" ? " is-material-note" : face === "note" ? " is-note" : "";
+  return <article data-element-id={element.id} data-note-tint={tint} data-note-face={face} ref={card} className={`wiki-card is-${element.kind}${faceClass} ${element.material ? "has-material" : ""} ${element.deletedAt ? "is-trashed" : ""} ${selected ? "is-selected" : ""} ${pending ? "is-loading" : ""}`} aria-busy={pending || undefined}>
     {onSelect && <input className="wiki-card-select" type="checkbox" aria-label={`选择内容：${title}`} checked={selected} disabled={disabled} onChange={() => onSelect(element.id)} />}
     <button className={`wiki-card-open${element.tags?.length ? " has-tags" : ""}`} disabled={disabled || (Boolean(element.deletedAt) && !onSelect)} onClick={() => onSelect ? onSelect(element.id) : onOpen(element.id)} aria-label={`${onSelect ? "选择内容" : "打开内容"}：${title}`} aria-pressed={onSelect ? selected : undefined}>
       {image ? <div className={`wiki-card-image${imageRatio ? " has-ratio" : ""}`} style={imageRatio ? { "--wiki-image-ratio": imageRatio } : undefined}>{!canPreview ? <ImageIcon size={34} /> : preview === "error" ? <span className="wiki-card-image-error"><ImageIcon size={24} />预览无法加载</span> : <>{previewSize && requested && <img ref={imageNode} key={attempt} src={sizedThumbnail(400)} srcSet={imagePreviewWidths.map((width) => `${sizedThumbnail(width)} ${width}w`).join(", ")} sizes={previewSize} alt={title} loading="eager" decoding="async" onLoad={loaded} onError={() => { finishPreload.current?.(); setPreview("error"); }} />}{pending && <span className="wiki-card-image-loading" aria-hidden="true"><ImageIcon size={24} />正在加载预览…</span>}</>}</div>
         : element.kind === "video" ? <VideoCardPreview key={element.id} element={element} disabled={disabled || Boolean(onSelect)} />
-          : <div className="wiki-card-text"><p className="wiki-card-note-kind">{element.material ? <><BookOpen size={13} aria-hidden="true" /> 资料</> : <><FileText size={13} aria-hidden="true" /> 文字</>}</p><strong className="wiki-card-note-title">{noteTitle(element, title)}</strong>{(() => { const heading = noteTitle(element, title); const body = element.body || "打开查看关联内容"; const clipped = heading.endsWith("…") ? heading.slice(0, -1) : heading; return body.trim() === heading || body.trim().startsWith(clipped) ? null : <p>{body}</p>; })()}</div>}
+          : <div className="wiki-card-text">{face === "prompt" ? <p className="wiki-card-note-kind">提示词</p> : face === "material" ? <p className="wiki-card-note-kind"><BookOpen size={13} aria-hidden="true" /> 资料</p> : <span className="wiki-card-note-quote" aria-hidden="true">“</span>}{(() => { const heading = noteHeading(element, title); const preview = noteBodyPreview(element, heading); return <><strong className="wiki-card-note-title">{heading}</strong>{preview ? <p className="wiki-card-note-body">{preview}</p> : null}</>; })()}</div>}
       {element.tags?.length > 0 && <div className="wiki-card-tags" title={element.tags.join(" · ")}>{element.tags.slice(0, 2).map((tag) => <span className="wiki-tag" key={tag}>{tag}{element.aiTags?.some((a) => a.name === tag) && <span className="ai-source" title="AI 添加，打开内容查看整理记录">AI</span>}</span>)}{element.tags.length > 2 && <span className="wiki-card-tag-count">+{element.tags.length - 2}</span>}</div>}
     </button>
-    {element.copyCount > 0 && <div className="wiki-card-copy-count" title="累计复制成功次数；历史未记录的操作不计入，相似堆叠仅显示当前封面内容的次数。"><Copy size={12} aria-hidden="true" />复制 {element.copyCount} 次</div>}
-    {element.material && <span className="wiki-material-badge">资料</span>}
+    {element.copyCount > 0 && <div className={`wiki-card-copy-count${face === "prompt" ? " is-prompt-count" : ""}`} title="累计复制成功次数；历史未记录的操作不计入，相似堆叠仅显示当前封面内容的次数。"><Copy size={12} aria-hidden="true" />复制 {element.copyCount} 次</div>}
+    {element.material && element.kind !== "text" && <span className="wiki-material-badge">资料</span>}
     {preview === "error" && <button className="wiki-preview-retry" disabled={disabled} onClick={() => { setAttempt((value) => value + 1); setPreview("loading"); }}>重试预览</button>}
     {element.deletedAt && <div className="wiki-trash-meta">{image && <strong title={element.image.originalName}>{element.image.originalName}</strong>}<time dateTime={element.deletedAt}>删除于 {new Date(element.deletedAt).toLocaleString("zh-CN")}</time></div>}
     {element.deletedAt && <button className="wiki-restore" disabled={disabled} onClick={() => onRestore(element.id)}><RotateCcw size={14} />恢复内容</button>}

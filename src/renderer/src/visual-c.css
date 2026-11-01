@@ -118,30 +118,100 @@ html[data-atmosphere="soft"] {
 .wiki-card.is-text[data-note-tint="mint"] { --note-tint: var(--note-mint); }
 .wiki-card.is-text[data-note-tint="sky"] { --note-tint: var(--note-sky); }
 .wiki-card.is-text[data-note-tint="lavender"] { --note-tint: var(--note-lavender); }
+.wiki-card.is-text[data-note-tint="neutral"] { --note-tint: var(--note-neutral); }
+/* Scheme B: drop the left colour strip; prompts get a thin deep-ink top bar instead. */
+.wiki-card.is-text:not(.wiki-related-item *)::before {
+  top: 0;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: 100%;
+  height: 0;
+  background: transparent;
+}
+.wiki-card.is-text.is-prompt:not(.wiki-related-item *)::before {
+  height: 3px;
+  background: var(--c-deep);
+}
+.wiki-card.is-text:not(.wiki-related-item *) .wiki-card-text {
+  padding-left: 16px;
+}
+.wiki-card.is-text.has-material .wiki-card-text {
+  padding-top: 16px;
+}
+.wiki-card.is-text .wiki-material-badge { display: none; }
 .wiki-card.is-text .wiki-card-text {
   background: transparent;
   aspect-ratio: auto;
   min-height: 140px;
   padding: 16px 16px 14px;
+  gap: 0;
 }
 .wiki-card.is-text .wiki-card-text .wiki-card-note-kind {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin: 0 0 6px;
+  width: fit-content;
+  margin: 0 0 8px;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   font-size: var(--fs-caption);
   font-weight: 600;
   letter-spacing: .04em;
-  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  color: color-mix(in srgb, var(--ink) 62%, transparent);
+}
+.wiki-card.is-text.is-prompt .wiki-card-text .wiki-card-note-kind {
+  color: var(--c-deep);
+  background: color-mix(in srgb, var(--c-deep) 8%, transparent);
+}
+.wiki-card.is-text .wiki-card-note-quote {
+  display: block;
+  margin: -4px 0 2px;
+  color: color-mix(in srgb, var(--ink) 18%, transparent);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
 }
 .wiki-card.is-text .wiki-card-text strong.wiki-card-note-title {
-  display: block;
+  display: -webkit-box;
   margin: 0 0 6px;
   color: var(--ink);
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -.02em;
-  line-height: 1.3;
+  line-height: 1.35;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+.wiki-card.is-text .wiki-card-text p.wiki-card-note-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.wiki-masonry .wiki-card.is-text .wiki-card-text p.wiki-card-note-body {
+  -webkit-line-clamp: 6;
+}
+/* Disable the old "first line is title" style once we have a real title + body. */
+.wiki-card.is-text .wiki-card-text p.wiki-card-note-body::first-line {
+  color: var(--muted);
+  font-size: var(--fs-body);
+  font-weight: 400;
+}
+.wiki-card.is-text .wiki-card-copy-count.is-prompt-count {
+  color: color-mix(in srgb, var(--ink) 70%, transparent);
+  font-weight: 550;
 }
 .wiki-card.is-selected {
   outline: 3px solid color-mix(in srgb, var(--c-violet) 80%, var(--accent));

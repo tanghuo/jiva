@@ -65,7 +65,7 @@ test("material actions, batch editing and remembered filtering work across categ
   const card = (id) => page.locator(`article[data-element-id="${id}"]`);
   await card(a.id).click({ button: "right" });
   await page.getByRole("menuitem", { name: "标记为资料", exact: true }).click();
-  await card(a.id).locator(".wiki-material-badge").waitFor();
+  await card(a.id).locator(".wiki-card-note-kind").filter({ hasText: "资料" }).waitFor();
   await openViewMenu(page);
   await page.getByRole("checkbox", { name: "仅看资料", exact: true }).check();
   await card(b.id).waitFor({ state: "detached" });
@@ -90,12 +90,12 @@ test("material actions, batch editing and remembered filtering work across categ
   await batch.getByRole("button", { name: "全选已加载内容", exact: true }).click();
   await batch.getByRole("button", { name: "标记为资料", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "已标记为资料" }).waitFor();
-  await page.locator(".wiki-material-badge").nth(1).waitFor();
-  assert.equal(await page.locator(".wiki-material-badge").count(), 2);
+  await page.locator(".wiki-card.is-material-note").nth(1).waitFor();
+  assert.equal(await page.locator(".wiki-card.is-material-note").count(), 2);
   await batch.getByRole("button", { name: "全选已加载内容", exact: true }).click();
   await batch.getByRole("button", { name: "取消资料标记", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "已取消资料标记" }).waitFor();
-  await page.locator(".wiki-material-badge").first().waitFor({ state: "detached" });
+  await page.locator(".wiki-card.is-material-note").first().waitFor({ state: "detached" });
   const res = await fetch(new URL("api/elements/material", app.url), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: [a.id, 999999], material: true }) });
   assert.equal(res.status, 409);
   assert.equal((await (await fetch(new URL(`api/elements/${a.id}`, app.url))).json()).material, false);
@@ -116,13 +116,14 @@ test("new mixed content can be saved as materials without changing the category 
   ]);
   await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
   await dialog.waitFor({ state: "detached" });
-  await page.locator(".wiki-material-badge").nth(2).waitFor();
+  await page.locator(".wiki-card.has-material").nth(2).waitFor();
+  assert.equal(await page.locator(".wiki-card.has-material").count(), 3);
   const result = await (await fetch(new URL("api/elements?material=1", app.url))).json();
   assert.equal(result.pagination.total, 3);
   assert.deepEqual(new Set(result.elements.map((element) => element.kind)), new Set(["image", "text", "video"]));
   await openViewMenu(page);
   await page.getByRole("checkbox", { name: "仅看资料", exact: true }).check();
-  await page.locator(".wiki-material-badge").nth(2).waitFor();
+  await page.locator(".wiki-card.has-material").nth(2).waitFor();
   if (process.env.MATERIAL_SCREENSHOT) await page.screenshot({ path: process.env.MATERIAL_SCREENSHOT, fullPage: true });
 });
 
