@@ -3,6 +3,7 @@ import { elementId, elementQuery, elementTags } from "../../shared/domain/elemen
 import { canvasQuery } from "../../shared/domain/canvas.js";
 import { httpError, json, readJson, readImage } from "./http.js";
 import { serveVideo } from "./videoResponse.js";
+import { resolveRequestSpaceId } from "./spaceRoutes.js";
 
 export async function handleElementRoute(wiki, req, res, url, semantic, { allowTrashPreview = false, allowUsageStats = false, allowMaterialWrite = false } = {}) {
   const method = req.method;
@@ -64,7 +65,7 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
   }
   if (route === "/api/vocabulary") {
     if (method !== "GET") throw httpError(405, "Method not allowed");
-    json(res, 200, wiki.vocabulary());
+    json(res, 200, wiki.vocabulary({ spaceId: resolveRequestSpaceId(wiki, req, url) }));
     return true;
   }
   if (route === "/api/vocabulary/aliases") {
@@ -85,7 +86,7 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
   }
   if (route === "/api/canvas") {
     if (method !== "GET") throw httpError(405, "Method not allowed");
-    json(res, 200, wiki.canvas(canvasQuery(url.searchParams)));
+    json(res, 200, wiki.canvas({ ...canvasQuery(url.searchParams), spaceId: resolveRequestSpaceId(wiki, req, url) }));
     return true;
   }
   if (route === "/api/canvas/layout") {
@@ -95,7 +96,7 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
   }
   if (route === "/api/tags") {
     if (method !== "GET") throw httpError(405, "Method not allowed");
-    json(res, 200, { tags: wiki.tags(), aliases: wiki.tagAliases() });
+    json(res, 200, { tags: wiki.tags({ spaceId: resolveRequestSpaceId(wiki, req, url) }), aliases: wiki.tagAliases({ spaceId: resolveRequestSpaceId(wiki, req, url) }) });
     return true;
   }
   if (route === "/api/elements") {
@@ -108,16 +109,21 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
       const retrieval = includeDescription && query.q.trim()
         ? await semantic.search({ query: query.q, signal: AbortSignal.timeout(5000) }) : null;
       const matches = retrieval?.matches || [];
-      const result = wiki.list({ ...query, includeDescription, semanticIds: matches.filter((hit) => hit.score >= 0.48).map((hit) => hit.elementId) });
+      const spaceId = resolveRequestSpaceId(wiki, req, url);
+      const result = wiki.list({ ...query, spaceId, includeDescription, semanticIds: matches.filter((hit) => hit.score >= 0.48).map((hit) => hit.elementId) });
       if (allowTrashPreview && query.scope === "trash") {
         for (const element of result.elements) if (element.image) element.image.thumbnailUrl = `/api/elements/${element.id}/thumbnail?scope=trash`;
       }
       const possible = result.pagination.total === 0 && matches.length
-        ? wiki.list({ ...query, includeDescription, page: 1, pageSize: 100, semanticIds: matches.map((hit) => hit.elementId) }).elements : [];
+        ? wiki.list({ ...query, spaceId, includeDescription, page: 1, pageSize: 100, semanticIds: matches.map((hit) => hit.elementId) }).elements : [];
       json(res, 200, { ...result, possible,
         ...(retrieval?.reason ? { searchNotice: `当前仅匹配文字、文件名和已有图片描述：${retrieval.reason}` } : {}) });
     }
-    else if (method === "POST") json(res, 201, wiki.create(await readJson(req)));
+    else if (method === "POST") {
+      const payload = await readJson(req);
+      if (payload.spaceId === undefined) payload.spaceId = resolveRequestSpaceId(wiki, req, url);
+      json(res, 201, wiki.create(payload));
+    }
     else throw httpError(405, "Method not allowed");
     return true;
   }
@@ -131,7 +137,8 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
       catch { throw httpError(400, "无效的标签格式"); }
       const material = req.headers["x-element-material"];
       if (material !== undefined && !["0", "1"].includes(material)) throw httpError(400, "无效的素材标记");
-      const result = await wiki.importVideo(req, name, tags, material === "1");
+      const spaceId = resolveRequestSpaceId(wiki, req, url);
+      const result = await wiki.importVideo(req, name, tags, material === "1", spaceId);
       json(res, result.importStatus === "reused" ? 200 : 201, result);
     } catch (error) { req.resume(); throw error; }
     return true;
@@ -147,7 +154,8 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
     tags = elementTags(tags);
     const material = req.headers["x-element-material"];
     if (material !== undefined && !["0", "1"].includes(material)) throw httpError(400, "无效的素材标记");
-    const result = await wiki.importImage(await readImage(req), name, tags, material === "1");
+    const spaceId = resolveRequestSpaceId(wiki, req, url);
+    const result = await wiki.importImage(await readImage(req), name, tags, material === "1", spaceId);
     json(res, result.importStatus === "reused" ? 200 : 201, result);
     return true;
   }

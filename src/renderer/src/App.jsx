@@ -18,6 +18,9 @@ import useQuota from './useQuota.js';
 import QuotaFloat from './QuotaFloat.jsx';
 import PageErrorBoundary from './PageErrorBoundary.jsx';
 import { useQuotaPreferences } from './quotaPreferences.js';
+import { applySpaceAccent, readStoredSpaceId, writeStoredSpaceId } from './spacePreferences.js';
+import { setActiveSpaceId } from './api.js';
+import { CreateSpaceDialog } from './SpaceSwitcher.jsx';
 import "./wiki.css";
 import "./surfaces.css";
 import "./shell.css";
@@ -48,6 +51,13 @@ const currentSection = () => {
 export default function App() {
   const quotaPreferences = useQuotaPreferences();
   const quota = useQuota(!lanGuest && quotaPreferences.enabled);
+  const [spaces, setSpaces] = useState([]);
+  const [currentSpaceId, setCurrentSpaceId] = useState(() => readStoredSpaceId());
+  const [spaceSwitching, setSpaceSwitching] = useState(false);
+  const [createSpaceOpen, setCreateSpaceOpen] = useState(false);
+  const [spaceBusy, setSpaceBusy] = useState(false);
+  const spaceSwitchTimer = useRef(null);
+  const currentSpace = spaces.find((space) => space.id === currentSpaceId) || spaces[0] || null;
   useEffect(() => {
     try {
       for (const key of Object.keys(localStorage)) if (/^wikiChat(?:Draft|Attachments|Activity):/.test(key)) localStorage.removeItem(key);
@@ -61,6 +71,58 @@ export default function App() {
   const [wikiTabRequest, setWikiTabRequest] = useState(null);
   const [wikiRevision, setWikiRevision] = useState(0), [openRequest, setOpenRequest] = useState(null);
   const refreshWiki = useCallback(() => setWikiRevision((n) => n + 1), []);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await request("/api/spaces");
+        if (cancelled) return;
+        setSpaces(result.spaces || []);
+        const stored = readStoredSpaceId();
+        const next = result.spaces?.find((space) => space.id === stored) || result.spaces?.[0] || null;
+        if (next) {
+          setCurrentSpaceId(next.id);
+          writeStoredSpaceId(next.id);
+          setActiveSpaceId(next.id);
+          applySpaceAccent(next.color);
+        }
+      } catch { /* Space list loads with the shell; content requests fall back to the default space. */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (!currentSpace) return;
+    setActiveSpaceId(currentSpace.id);
+    writeStoredSpaceId(currentSpace.id);
+    applySpaceAccent(currentSpace.color);
+  }, [currentSpace?.id, currentSpace?.color]);
+  function selectSpace(space) {
+    if (!space || space.id === currentSpaceId) return;
+    setSpaceSwitching(true);
+    setCurrentSpaceId(space.id);
+    writeStoredSpaceId(space.id);
+    setActiveSpaceId(space.id);
+    applySpaceAccent(space.color);
+    refreshWiki();
+    clearTimeout(spaceSwitchTimer.current);
+    spaceSwitchTimer.current = setTimeout(() => setSpaceSwitching(false), 150);
+  }
+  async function createSpace(payload) {
+    setSpaceBusy(true);
+    try {
+      const space = await request("/api/spaces", { method: "POST", body: JSON.stringify(payload) });
+      setSpaces((current) => [...current, space]);
+      setCreateSpaceOpen(false);
+      selectSpace(space);
+      return space;
+    } finally { setSpaceBusy(false); }
+  }
+  const spaceProps = {
+    spaces, currentSpace, spaceSwitching,
+    onSelectSpace: selectSpace,
+    onCreateSpace: lanGuest ? undefined : () => setCreateSpaceOpen(true),
+  };
+
   const [sourcePreview, setSourcePreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -218,15 +280,15 @@ export default function App() {
       main.addEventListener("blur", () => main.removeAttribute("tabindex"), { once: true });
     }}>跳到主要内容</a>
     <div className="app-layout">
-    <div className="app-workspace">
+    <div className={`app-workspace ${spaceSwitching ? "is-space-switching" : ""}`} data-space-switching={spaceSwitching || undefined}>
     {visited.has("wiki") && <Activity mode={section === "wiki" ? "visible" : "hidden"}>
       <WikiApp readOnly={readOnly} tabRequest={wikiTabRequest} onTabChange={wikiTabChanged} onBusyChange={setUploading} workspaceNavigation={workspaceNavigation} searchRequest={searchRequest}
-        onAddReference={lanGuest ? undefined : addReference} onAskAgent={lanGuest ? undefined : askAgent} externalRevision={wikiRevision} onChanged={refreshWiki} openRequest={openRequest} />
+        onAddReference={lanGuest ? undefined : addReference} onAskAgent={lanGuest ? undefined : askAgent} externalRevision={wikiRevision} onChanged={refreshWiki} openRequest={openRequest} spaceProps={spaceProps} spaceSwitching={spaceSwitching} />
     </Activity>}
-    {section === "shares" && <div className="wiki-shell"><WikiSidebar activeTab="shares" readOnly={lanGuest} onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = "wiki"; }}>{workspaceNavigation}</WikiSidebar><TemporaryShares local={!lanGuest} /></div>}
-    {visited.has('workflow') && !lanGuest && <Activity mode={section === 'workflow' ? 'visible' : 'hidden'}><div className="wiki-shell"><WikiSidebar activeTab="workflow" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="工作流"><Suspense fallback={<p role="status">正在打开工作流…</p>}><WorkflowApp /></Suspense></PageErrorBoundary></div></Activity>}
-    {visited.has('workbench') && !lanGuest && <Activity mode={section === 'workbench' ? 'visible' : 'hidden'}><div className="wiki-shell workbench-shell"><WikiSidebar activeTab="workbench" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="工作台"><Suspense fallback={<p role="status">正在打开工作台…</p>}><AgentWorkbench onOpen={browseSource} /></Suspense></PageErrorBoundary></div></Activity>}
-    {visited.has('aionui') && !lanGuest && <Activity mode={section === 'aionui' ? 'visible' : 'hidden'}><div className="wiki-shell aionui-experiment-shell"><WikiSidebar activeTab="aionui" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="实验入口"><Suspense fallback={<p role="status">正在打开实验入口…</p>}><AionuiExperiment active={section === 'aionui'} occluded={settingsOpen || shortcutsOpen || usageOpen || organizationOpen || sourcePreview !== null} /></Suspense></PageErrorBoundary></div></Activity>}
+    {section === "shares" && <div className="wiki-shell"><WikiSidebar activeTab="shares" readOnly={lanGuest} onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = "wiki"; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><TemporaryShares local={!lanGuest} /></div>}
+    {visited.has('workflow') && !lanGuest && <Activity mode={section === 'workflow' ? 'visible' : 'hidden'}><div className="wiki-shell"><WikiSidebar activeTab="workflow" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="工作流"><Suspense fallback={<p role="status">正在打开工作流…</p>}><WorkflowApp /></Suspense></PageErrorBoundary></div></Activity>}
+    {visited.has('workbench') && !lanGuest && <Activity mode={section === 'workbench' ? 'visible' : 'hidden'}><div className="wiki-shell workbench-shell"><WikiSidebar activeTab="workbench" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="工作台"><Suspense fallback={<p role="status">正在打开工作台…</p>}><AgentWorkbench onOpen={browseSource} /></Suspense></PageErrorBoundary></div></Activity>}
+    {visited.has('aionui') && !lanGuest && <Activity mode={section === 'aionui' ? 'visible' : 'hidden'}><div className="wiki-shell aionui-experiment-shell"><WikiSidebar activeTab="aionui" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="实验入口"><Suspense fallback={<p role="status">正在打开实验入口…</p>}><AionuiExperiment active={section === 'aionui'} occluded={settingsOpen || shortcutsOpen || usageOpen || organizationOpen || sourcePreview !== null} /></Suspense></PageErrorBoundary></div></Activity>}
     </div>
     </div>
     {!lanGuest && section !== "workbench" && section !== 'aionui' && (references.length > 0 || referenceTray.error) && <ReferenceTray elements={references} collapsed={referencesCollapsed} onCollapse={setReferencesCollapsed} busy={referenceBusy || uploading} loading={referenceTray.loading} error={referenceTray.error || referenceError} onRetry={referenceTray.error ? referenceTray.retry : undefined} startDisabled={referenceTray.loading || referenceTray.unresolved || !references.length}
@@ -241,5 +303,6 @@ export default function App() {
     {organizationOpen && !lanGuest && <DialogFrame bare label="整理历史" className="wiki-dialog organization-dialog organization-library-dialog" onClose={() => !organizationBusy && setOrganizationOpen(false)} title="整理历史" description="查看 AI 为哪些内容补充了标签和关联。" closeLabel="关闭整理历史" busy={organizationBusy}>
       <OrganizationPanel mode="history" onBusyChange={setOrganizationBusy} onChanged={refreshWiki} onOpen={(id) => { setOrganizationOpen(false); browseSource(id); }} />
     </DialogFrame>}
+    {createSpaceOpen && !lanGuest && <CreateSpaceDialog busy={spaceBusy} onClose={() => !spaceBusy && setCreateSpaceOpen(false)} onCreate={createSpace} />}
   </>;
 }

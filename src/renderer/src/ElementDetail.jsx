@@ -22,7 +22,7 @@ import VideoMarkerReferences from "./VideoMarkerReferences.jsx";
 import VisualMatches from "./VisualMatches.jsx";
 import VideoDetailBlocks from "./features/video-analysis/VideoDetailBlocks.jsx";
 
-export default function ElementDetail({ id, contextId, markerId, videoPosition, navigation, prepared, relationPage: page, onRelationPage: setPage, restoreScroll = 0, externalRevision = 0, externalBusy = false, onBusyChange, onBack, onOpen, onChanged, onTrashed, onAddReference, onContentContextMenu, readOnly = false, headerActions }) {
+export default function ElementDetail({ id, contextId, markerId, videoPosition, navigation, prepared, relationPage: page, onRelationPage: setPage, restoreScroll = 0, externalRevision = 0, externalBusy = false, onBusyChange, onBack, onOpen, onChanged, onTrashed, onAddReference, onContentContextMenu, readOnly = false, headerActions, onRequestMove }) {
   const [revision, setRevision] = useState(0);
   const [modal, setModal] = useState("");
   const [organizationResultId, setOrganizationResultId] = useState(null);
@@ -140,6 +140,7 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
           <div className="menu-panel">
             {!element.localOnly && ["text", "image", "video"].includes(element.kind) && <label className="wiki-material-filter wiki-detail-menu-check"><input type="checkbox" checked={Boolean(element.material)} disabled={busy || externalBusy} onChange={(event) => setMaterial(event.target.checked)} />标记为资料{element.kind === "video" && <span className="wiki-material-note">（仅库内筛选；视频不能发给 Agent）</span>}</label>}
             {element.kind === "image" && window.wikiDesktop?.setWallpaper && <button disabled={busy || externalBusy} onClick={setWallpaper}><Monitor size={15} />设为桌面壁纸</button>}
+            {onRequestMove && <button disabled={busy || externalBusy} onClick={(event) => { event.currentTarget.closest("details").open = false; onRequestMove(element); }}><span>移动到…</span></button>}
             <button className="danger-quiet" aria-label="移入回收站" onClick={(event) => { event.currentTarget.closest("details").open = false; mutate(`/api/elements/${id}`, "DELETE", () => onTrashed(element)); }} disabled={busy || externalBusy}><Trash2 size={15} /><span>移入回收站</span></button>
           </div>
         </details>}

@@ -51,3 +51,103 @@
   .wiki-detail > .wiki-detail-sticky-navigation { flex-wrap: wrap; row-gap: var(--sp-1); }
   .wiki-detail-nav-actions { padding-left: 0; }
 }
+
+/* —— Content spaces (方案 A switcher) —— */
+.space-switcher { position: relative; margin: 0 0 var(--sp-2); }
+.workspace-brand.space-switcher-trigger,
+.workspace-brand.space-switcher.is-readonly {
+  width: 100%;
+  min-height: var(--h-md);
+  padding: var(--sp-1) var(--sp-2);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.workspace-brand.space-switcher.is-readonly { cursor: default; }
+.workspace-brand.space-switcher-trigger:hover:not(:disabled) { background: var(--hover); }
+.workspace-brand.space-switcher-trigger:disabled { opacity: .55; cursor: wait; }
+.space-switcher-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-section);
+  font-weight: 600;
+}
+.space-switcher-chevron { flex: 0 0 auto; color: var(--muted); transition: transform var(--duration-fast) var(--ease-out); }
+.space-switcher.is-open .space-switcher-chevron { transform: rotate(180deg); }
+.space-switcher::after {
+  content: "";
+  display: block;
+  height: 2px;
+  margin: 6px var(--sp-2) 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--space-accent, #6B7C93) 55%, transparent);
+}
+.space-switcher-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-menu);
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: var(--e-2);
+}
+.space-switcher-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.space-switcher-item,
+.space-switcher-create,
+.space-move-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: var(--h-md);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.space-switcher-item:hover,
+.space-switcher-create:hover,
+.space-move-item:hover { background: var(--hover); }
+.space-switcher-item-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.space-switcher-separator { height: 1px; margin: var(--sp-1) 0; background: var(--line); }
+.space-swatch { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); }
+.space-color-picker { margin: var(--sp-4) 0 0; border: 0; padding: 0; }
+.space-color-picker legend { margin-bottom: var(--sp-2); color: var(--muted); font-size: var(--fs-small); }
+.space-color-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
+.space-color-option { position: relative; display: grid; justify-items: center; gap: 4px; padding: var(--sp-2); border-radius: var(--r-md); cursor: pointer; }
+.space-color-option input { position: absolute; inset: 0; opacity: 0; }
+.space-color-option span:first-of-type { width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); }
+.space-color-option:has(input:checked) { background: var(--hover); outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+.space-color-name { font-size: var(--fs-caption); color: var(--muted); }
+.space-move-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.space-move-item.is-selected { background: var(--hover); }
+.wiki-sidebar-space-content { display: flex; flex: 1; flex-direction: column; gap: 2px; min-height: 0; }
+.wiki-sidebar-space-content .wiki-sidebar-bottom { margin-top: auto; }
+.wiki-sidebar-space-content.is-fading,
+.app-workspace.is-space-switching .wiki-main,
+.wiki-shell.is-space-switching .wiki-main {
+  opacity: .35;
+  transition: opacity 150ms ease-out;
+}
+@media (max-width: 720px) {
+  .space-switcher { flex: 1 1 auto; margin: 0; }
+  .space-switcher::after { display: none; }
+  .space-switcher-menu { min-width: 220px; right: auto; }
+}

@@ -7,10 +7,12 @@ const kindNames = { 1: "text", 2: "image", 3: "session", 5: "video" };
 
 export function createCanvasRepository(db, { publicOnly = false } = {}) {
   const vocabulary = createVocabularyRepository(db);
-  function matching(q, tag) {
+  const hasSpaces = db.prepare("PRAGMA table_info(elements)").all().some((column) => column.name === "space_id");
+  function matching(q, tag, spaceId) {
     const clauses = ["e.deleted_at IS NULL"];
     if (publicOnly) clauses.push("e.local_only=0");
     const values = [];
+    if (hasSpaces && spaceId != null) { clauses.push("e.space_id=?"); values.push(spaceId); }
     if (q) {
       clauses.push("(e.body LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM element_images image WHERE image.element_id = e.id AND image.original_name LIKE ? ESCAPE '\\') OR EXISTS (SELECT 1 FROM element_videos video WHERE video.element_id=e.id AND video.original_name LIKE ? ESCAPE '\\') OR EXISTS (SELECT 1 FROM canonical_element_tags et JOIN resolved_tags c ON c.canonical_id=et.tag_id JOIN tags t ON t.id=c.id WHERE et.element_id=e.id AND t.name LIKE ? ESCAPE '\\'))");
       const search = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
@@ -18,13 +20,13 @@ export function createCanvasRepository(db, { publicOnly = false } = {}) {
     }
     if (tag) {
       clauses.push("EXISTS (SELECT 1 FROM canonical_element_tags et JOIN tags t ON t.id=et.tag_id WHERE et.element_id=e.id AND t.normalized_name=?)");
-      values.push(vocabulary.tag(tag)?.normalizedName ?? tag);
+      values.push(vocabulary.tag(tag, spaceId)?.normalizedName ?? tag.toLowerCase());
     }
     return { clauses, values };
   }
 
-  function candidates(ids, q, tag, expand, limit) {
-    const { clauses, values } = matching(expand ? "" : q, expand ? "" : tag);
+  function candidates(ids, q, tag, expand, limit, spaceId) {
+    const { clauses, values } = matching(expand ? "" : q, expand ? "" : tag, spaceId);
     if (ids.length) {
       clauses.push("e.id NOT IN (SELECT value FROM json_each(?))");
       values.push(JSON.stringify(ids));
@@ -37,8 +39,8 @@ export function createCanvasRepository(db, { publicOnly = false } = {}) {
     return db.prepare(`SELECT e.id FROM elements e WHERE ${clauses.join(" AND ")} ORDER BY e.id DESC LIMIT ?`).all(...values, limit);
   }
 
-  function overview({ ids, groupIds, q, limit }) {
-    const { clauses, values } = matching(q, "");
+  function overview({ ids, groupIds, q, limit, spaceId }) {
+    const { clauses, values } = matching(q, "", spaceId);
     const where = clauses.join(" AND ");
     // Group the whole matching library before paging, so a folder's count does not
     // depend on how many element cards the client has already loaded.
@@ -78,16 +80,18 @@ export function createCanvasRepository(db, { publicOnly = false } = {}) {
   }
 
   return {
-    read({ ids, q, tag, limit, expand, view = "flat", groupIds = [] }) {
+    read({ ids, q, tag, limit, expand, view = "flat", groupIds = [], spaceId } = {}) {
       // One synchronous read transaction keeps nodes and their edges in the same snapshot.
       db.exec("BEGIN");
       try {
-        const grouped = view === "tags" && !tag ? overview({ ids, groupIds, q, limit }) : null;
-        const active = grouped ? grouped.ids : db.prepare(`SELECT id FROM elements WHERE deleted_at IS NULL ${publicOnly ? "AND local_only=0" : ""} AND id IN (SELECT value FROM json_each(?))`)
-          .all(JSON.stringify(ids)).map((row) => row.id);
+        const sid = hasSpaces && spaceId != null ? Number(spaceId) : (hasSpaces ? db.prepare("SELECT id FROM spaces WHERE archived_at IS NULL ORDER BY sort,id LIMIT 1").get()?.id : null);
+        const grouped = view === "tags" && !tag ? overview({ ids, groupIds, q, limit, spaceId: sid }) : null;
+        const spaceFilter = sid == null ? "" : " AND space_id=?";
+        const active = grouped ? grouped.ids : db.prepare(`SELECT id FROM elements WHERE deleted_at IS NULL ${publicOnly ? "AND local_only=0" : ""}${spaceFilter} AND id IN (SELECT value FROM json_each(?))`)
+          .all(...(sid == null ? [JSON.stringify(ids)] : [sid, JSON.stringify(ids)])).map((row) => row.id);
         if (expand && !active.includes(expand)) throw elementError("请先把要展开的内容加入画布", 400);
         const room = grouped ? 0 : Math.min(limit, maxCanvasNodes - active.length);
-        const added = room ? candidates(active, q, tag, expand, room).map((row) => row.id) : [];
+        const added = room ? candidates(active, q, tag, expand, room, sid).map((row) => row.id) : [];
         const selected = JSON.stringify([...active, ...added]);
         const elements = db.prepare(`SELECT e.id, e.kind, coalesce(i.original_name,v.original_name) AS original_name, substr(e.body, 1, 240) AS summary, p.x, p.y,
           (SELECT json_group_array(t.name) FROM canonical_element_tags et JOIN tags t ON t.id=et.tag_id WHERE et.element_id=e.id) AS tags,
@@ -110,9 +114,9 @@ export function createCanvasRepository(db, { publicOnly = false } = {}) {
             ...(!row.tag_relation_id && db.prepare("SELECT result_id AS aiResultId,modified AS aiModified FROM organization_bindings WHERE relation_id=?").get(row.id)), type: row.kind === 2 ? "title" : "related", sourceId: row.source_id, targetId: row.target_id, elementIds: [row.source_id, row.target_id],
             ...(row.tag_relation_id ? { tagRelationId: row.tag_relation_id, targetTag: row.target_tag } : {}) })),
           edgesTruncated: edges.length > maxCanvasEdges,
-          hasMore: grouped ? grouped.hasMore : candidates(selectedIds, q, tag, null, 1).length > 0,
+          hasMore: grouped ? grouped.hasMore : candidates(selectedIds, q, tag, null, 1, sid).length > 0,
           ...(grouped ? { groups: grouped.groups, totals: grouped.totals } : {}),
-          expansionHasMore: Boolean(expand && candidates(selectedIds, "", "", expand, 1).length),
+          expansionHasMore: Boolean(expand && candidates(selectedIds, "", "", expand, 1, sid).length),
         };
         db.exec("COMMIT");
         return result;

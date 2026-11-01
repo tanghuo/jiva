@@ -13,6 +13,7 @@ import WikiGrid from "./WikiGrid.jsx";
 import WindowedWikiGrid from "./WindowedWikiGrid.jsx";
 import AddContentDialog from "./AddContentDialog.jsx";
 import { Button, ConfirmDialog, EmptyState, FloatingLayer } from "./ui/index.js";
+import { MoveToSpaceDialog } from "./SpaceSwitcher.jsx";
 import WikiSidebar, { contentSections, wikiSections as tabs } from "./WikiSidebar.jsx";
 import CanvasBoundary from "./CanvasBoundary.jsx";
 import WikiContextMenu from "./WikiContextMenu.jsx";
@@ -22,7 +23,7 @@ import Select from "./Select.jsx";
 import ViewMenu from "./ViewMenu.jsx";
 
 const WikiCanvas = lazy(() => import("./WikiCanvas.jsx"));
-export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavigation, initialTab = "all", tabRequest, onTabChange, onAddReference, onAskAgent, openRequest, externalRevision = 0, onChanged, searchRequest }) {
+export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavigation, initialTab = "all", tabRequest, onTabChange, onAddReference, onAskAgent, openRequest, externalRevision = 0, onChanged, searchRequest, spaceProps = {}, spaceSwitching = false }) {
   const [tab, setTab] = useState(initialTab);
   const [view, setView] = useState(() => { try { return localStorage.getItem("wikiContentView") === "grid" ? "grid" : "masonry"; } catch { return "masonry"; } });
   const [stackSimilar, setStackSimilar] = useState(() => { try { return localStorage.getItem("wikiStackSimilar") === "true"; } catch { return false; } });
@@ -55,6 +56,9 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
   const [canvasAdded, setCanvasAdded] = useState([]);
   const [imports, setImports] = useState([]);
   const [lastDeleted, setLastDeleted] = useState([]);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [detailMoveIds, setDetailMoveIds] = useState(null);
   const [managing, setManaging] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [error, setError] = useState("");
@@ -261,6 +265,19 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
     };
   }, [readOnly, busy, detailBusy, canvasBusy, creationBusy, creation]);
 
+  async function moveSelected(targetSpaceId, ids = null) {
+    const moveIds = ids || [...selected];
+    if (!moveIds.length || moveBusy) return;
+    setMoveBusy(true); setError("");
+    try {
+      const result = await request("/api/elements/move", { method: "POST", body: JSON.stringify({ ids: moveIds, targetSpaceId }) });
+      setMoveOpen(false); setDetailMoveIds(null); setSelected(new Set()); setManaging(false);
+      if (ids) setStack([]);
+      setRevision((n) => n + 1); onChanged?.();
+      if (result.relationsDropped) setError(`已移动；有 ${result.relationsDropped} 条跨空间关联已断开。`);
+    } catch (failure) { setError(failure.message); throw failure; }
+    finally { setMoveBusy(false); }
+  }
   function finishManaging() { setManaging(false); setSelected(new Set()); }
   function toggleSelected(id) {
     if (writeLock.current) return;
@@ -386,7 +403,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
   }
   // 「问 Agent」 lives in each page header (library, canvas, detail) as a secondary action — no breadcrumb bar.
   const askAgent = !readOnly && onAskAgent ? <button className="wiki-ask-agent" data-agent-trigger disabled={busy || detailBusy || creationBusy || canvasBusy} onClick={onAskAgent} title="打开 Agent 工作台；携带资料请先放进资料篮"><MessageCircle size={16} />问 Agent</button> : null;
-  return <div className="wiki-shell" onContextMenu={(event) => {
+  return <div className={`wiki-shell ${spaceSwitching ? "is-space-switching" : ""}`} onContextMenu={(event) => {
     setBackMenu(null);
     const card = event.target.closest("[data-element-id]");
     const element = !stack.length && card && [...(list.data?.elements || []), ...(list.data?.possible || [])].find((entry) => String(entry.id) === card.dataset.elementId);
@@ -404,7 +421,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
   }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false); }} onDrop={(e) => {
     e.preventDefault(); setDragging(false); selectFiles(e.dataTransfer.files);
   }}>
-    <WikiSidebar activeTab={tab} onChooseTab={chooseTab} busy={busy || detailBusy || creationBusy || canvasBusy} readOnly={readOnly}>{workspaceNavigation}</WikiSidebar>
+    <WikiSidebar activeTab={tab} onChooseTab={chooseTab} busy={busy || detailBusy || creationBusy || canvasBusy} readOnly={readOnly} {...spaceProps}>{workspaceNavigation}</WikiSidebar>
     <main id="main-content" data-tab={tab} data-c-surface={stack.length ? "detail" : tab === "canvas" ? "canvas" : ["all", "image", "video", "text", "trash"].includes(tab) ? "library" : "page"} className={`wiki-main ${stack.length ? "is-detail" : ""} ${tab === "canvas" && !stack.length ? "is-canvas" : ""} ${view === "masonry" && tab !== "canvas" && !stack.length ? "is-masonry" : ""}`}>
       <div className="toast-region">
         {lastDeleted.length > 0 && <div className="wiki-deletion-feedback" role="status"><span>{lastDeleted.length === 1 ? `“${elementLabel(lastDeleted[0])}”已移入回收站` : `${lastDeleted.length} 条内容已移入回收站`}</span><button className="text-button" disabled={busy || detailBusy} onClick={() => restore(lastDeleted.map((element) => element.id))}>撤销删除</button><button className="icon-only" aria-label="关闭删除提示" disabled={busy} onClick={() => setLastDeleted([])}><X size={16} /></button></div>}
@@ -462,7 +479,8 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
           {stackSimilar && <span className="wiki-muted">已展开堆叠，逐项选择内容</span>}
           <button className="text-button" disabled={busy || list.loading || !list.data?.elements.length} onClick={() => setSelected(new Set(list.data.elements.map((element) => element.id)))}>全选已加载内容</button>
           <button className="text-button" disabled={busy || !selected.size} onClick={() => setSelected(new Set())}>清空选择</button>
-          {tab !== "trash" && <><button disabled={busy || list.loading || !selected.size} onClick={() => setMaterial([...selected], true)}>标记为资料</button><button disabled={busy || list.loading || !selected.size} onClick={() => setMaterial([...selected], false)}>取消资料标记</button></>}
+          {tab !== "trash" && <><button disabled={busy || list.loading || !selected.size} onClick={() => setMaterial([...selected], true)}>标记为资料</button><button disabled={busy || list.loading || !selected.size} onClick={() => setMaterial([...selected], false)}>取消资料标记</button>
+          <button disabled={busy || list.loading || !selected.size || (spaceProps.spaces?.length || 0) < 2} onClick={() => setMoveOpen(true)}>移动到…</button></>}
           <button className="danger-quiet" disabled={busy || list.loading || !selected.size} onClick={() => { if (tab === "trash") { setPurgeConfirmPhrase(""); setPurgeConfirmation({ ids: [...selected] }); } else trashSelected(); }}><Trash2 size={15} />{busy ? "正在处理…" : tab === "trash" ? "永久删除选中项" : "移入回收站"}</button>
           <button className="text-button" disabled={busy} onClick={finishManaging}>退出管理</button>
         </div>}
@@ -472,7 +490,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
         {list.loading && !list.data && <div className="wiki-list-loading" role="status"><p className="wiki-muted"><span className="spinner" aria-hidden="true" />正在读取内容…</p>
           <div className="wiki-skeleton-grid" aria-hidden="true">{Array.from({ length: 8 }, (_, index) => <span key={index} className="skeleton" />)}</div></div>}
         {list.data?.elements.length === 0 && !list.data?.possible?.length && <EmptyState className="wiki-empty" icon={tab === "trash" ? Trash2 : Network}
-          title={q || tags.length ? "没有找到相关内容" : tab === "trash" ? "回收站是空的" : readOnly ? "暂无共享内容" : "还没有内容"}
+          title={q || tags.length ? "没有找到相关内容" : tab === "trash" ? "回收站是空的" : readOnly ? "暂无共享内容" : "这个空间还没有内容"}
           actions={q || tags.length ? <button onClick={() => { setQ(""); setTags([]); }}>清空筛选</button> : null}>{q || tags.length ? "试试其他关键词或标签，或清空筛选。" : tab === "trash" ? "移入回收站的内容会保留在这里，可以随时恢复。" : readOnly ? "本机保存内容后即可在这里浏览。" : "把图片、视频拖到这里，或者点右上角的「添加内容」。"}</EmptyState>}
         <WindowedWikiGrid key={query.toString()} masonry={view === "masonry"} cardWidth={cardWidth}>{list.data?.elements.map((element, index) => <MediaStackCard key={element.id} element={element} loading={index < 8 ? "eager" : "lazy"} onOpen={open} onShowStack={setMediaStackId} onRestore={(id) => restore([id])} onSelect={managing ? toggleSelected : undefined} selected={selected.has(element.id)} disabled={busy} />)}</WindowedWikiGrid>
         <div className="wiki-load-more" ref={list.sentinel}>
@@ -501,12 +519,17 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
         onRelationPage={(value) => setStack((current) => current.map((entry, i) => i === current.length - 1 ? { ...entry, page: value } : entry))}
         restoreScroll={detailScroll} onBusyChange={setDetailBusy} onBack={back} onOpen={open} onChanged={refresh} onAddReference={onAddReference}
         onContentContextMenu={(event, element) => { event.preventDefault(); event.stopPropagation(); setBackMenu({ x: event.clientX, y: event.clientY, element }); }}
-        headerActions={askAgent} onTrashed={(element) => { recordDeletion([element]); setStack([]); savedScroll.current = []; }} />}
+        headerActions={askAgent} onTrashed={(element) => { recordDeletion([element]); setStack([]); savedScroll.current = []; }}
+        onRequestMove={(spaceProps.spaces?.length || 0) > 1 ? (element) => setDetailMoveIds([element.id]) : undefined} />}
     </main>
     {mediaStackId && <MediaStackDialog id={mediaStackId} revision={resourceRevision} readOnly={readOnly} onClose={() => setMediaStackId(null)} onOpen={(id) => { setMediaStackId(null); open(id); }} />}
     {backMenu && <WikiContextMenu menu={backMenu} onClose={() => setBackMenu(null)} onSetMaterial={readOnly ? undefined : (element) => setMaterial([element.id], !element.material)} onAddReference={readOnly ? undefined : onAddReference} onEdit={readOnly ? undefined : editText} onBack={back} disabled={busy || detailBusy} onNotice={setPurgeNotice} onError={setError} />}
     {editing && <ElementEditor key={editing.id} element={editing} onBusyChange={setBusy} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); setPurgeNotice("文字已更新"); }} />}
     {!readOnly && <input ref={files} hidden type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov" aria-label="导入图片或视频文件" onChange={(e) => selectFiles(e.target.files)} />}
+    {(moveOpen || detailMoveIds) && <MoveToSpaceDialog spaces={spaceProps.spaces || []} currentSpaceId={spaceProps.currentSpace?.id}
+      count={detailMoveIds ? detailMoveIds.length : selected.size}
+      busy={moveBusy} onClose={() => { if (!moveBusy) { setMoveOpen(false); setDetailMoveIds(null); } }}
+      onMove={(targetSpaceId) => moveSelected(targetSpaceId, detailMoveIds || null)} />}
     {creation && <AddContentDialog value={creation} onChange={setCreation} onChooseFiles={() => files.current.click()}
       onClose={() => setCreation(null)} onBusyChange={setCreationBusy} onSaved={contentSaved} onComplete={completeCreation} />}
     {purgeConfirmation && <ConfirmDialog label="确认永久删除" title={purgeConfirmation.all ? "清空回收站？" : `永久删除选中的 ${purgeConfirmation.ids.length} 项？`}

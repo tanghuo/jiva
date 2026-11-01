@@ -12,14 +12,29 @@ function devApiBase() {
 }
 const apiBase = devApiBase();
 
+let activeSpaceId = null;
+export function setActiveSpaceId(spaceId) { activeSpaceId = spaceId || null; }
+export function getActiveSpaceId() { return activeSpaceId; }
+
+const spaceScoped = /\/api\/(elements|tags|canvas|images|videos|relations|vocabulary|trash|tag-relations|visual-search)(\b|\/|\?)/;
+
+function withSpace(path) {
+  if (!activeSpaceId || !spaceScoped.test(path) || /[?&]spaceId=/.test(path)) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}spaceId=${encodeURIComponent(activeSpaceId)}`;
+}
+
 export function apiUrl(path) {
   return `${apiBase}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 export async function request(path, options = {}) {
-  const response = await fetch(apiUrl(path), {
+  const headers = { "content-type": "application/json", ...options.headers };
+  if (activeSpaceId && spaceScoped.test(path) && !headers["x-jiva-space-id"]) {
+    headers["x-jiva-space-id"] = String(activeSpaceId);
+  }
+  const response = await fetch(apiUrl(withSpace(path)), {
     ...options,
-    headers: { "content-type": "application/json", ...options.headers },
+    headers,
   });
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json")

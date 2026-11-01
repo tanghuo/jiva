@@ -5,6 +5,7 @@ import { createVocabularyRepository } from "./vocabularyRepository.js";
 import { createVideoMarkerRepository } from "./videoMarkerRepository.js";
 import { relationRole } from "../../shared/domain/relationRoles.js";
 import { similarStacks } from "./similarStacks.js";
+import { createSpaceRepository } from "./spaceRepository.js";
 
 const kinds = { text: 1, image: 2, session: 3, video: 5 };
 const kindNames = { 1: "text", 2: "image", 3: "session", 5: "video" };
@@ -14,6 +15,7 @@ function present(row) {
   if (!row) throw elementError("内容不存在或已移入回收站", 404);
   return {
     id: row.id, kind: kindNames[row.kind], body: row.body,
+    ...(row.space_id != null ? { spaceId: row.space_id } : {}),
     material: Boolean(row.is_material),
     creationSource: Object.keys(creationSources).find((key) => creationSources[key] === row.creation_source) || "unknown",
     ...(row.local_only ? { localOnly: true } : {}), ...(row.record_data ? { record: JSON.parse(row.record_data) } : {}),
@@ -34,6 +36,16 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
   const hasVideos = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='element_videos'").get());
   const hasMarkers = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='video_markers'").get());
   const hasDimensions = db.prepare("PRAGMA table_info(element_images)").all().some((column) => column.name === "width");
+  const hasSpaces = db.prepare("PRAGMA table_info(elements)").all().some((column) => column.name === "space_id");
+  const spaces = hasSpaces ? createSpaceRepository(db) : null;
+  function resolveSpaceId(spaceId) {
+    if (!spaces) return null;
+    return spaces.resolveSpaceId(spaceId);
+  }
+  function elementSpaceId(elementId) {
+    if (!hasSpaces) return null;
+    return db.prepare("SELECT space_id AS id FROM elements WHERE id=?").get(elementId)?.id ?? null;
+  }
   let listStamp, stackStamp, stackCache;
   const groupedLists = new Map();
   const libraryClock = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='organization_state'").get()
@@ -95,8 +107,12 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
 
   function insert(kind, content) {
     const now = new Date().toISOString();
-    const id = Number(db.prepare("INSERT INTO elements (kind, body, created_at, updated_at,local_only) VALUES (?, ?, ?, ?,?)")
-      .run(kinds[kind], content.body || "", now, now, Number(Boolean(content.localOnly))).lastInsertRowid);
+    const spaceId = hasSpaces ? resolveSpaceId(content.spaceId) : null;
+    const id = Number((hasSpaces
+      ? db.prepare("INSERT INTO elements (kind, body, created_at, updated_at,local_only,space_id) VALUES (?, ?, ?, ?,?,?)")
+          .run(kinds[kind], content.body || "", now, now, Number(Boolean(content.localOnly)), spaceId)
+      : db.prepare("INSERT INTO elements (kind, body, created_at, updated_at,local_only) VALUES (?, ?, ?, ?,?)")
+          .run(kinds[kind], content.body || "", now, now, Number(Boolean(content.localOnly)))).lastInsertRowid);
     // Older migrations also create session elements before this column exists.
     if (content.creationSource) db.prepare("UPDATE elements SET creation_source=? WHERE id=?").run(creationSources[content.creationSource], id);
     if (content.material) db.prepare("UPDATE elements SET is_material=1 WHERE id=?").run(id);
@@ -104,7 +120,8 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
   }
 
   function addTag(id, name) {
-    const canonical = vocabulary.tag(name);
+    const spaceId = elementSpaceId(id);
+    const canonical = vocabulary.tag(name, spaceId);
     if (canonical && db.prepare("SELECT 1 FROM canonical_element_tags WHERE element_id=? AND tag_id=?").get(id, canonical.id)) {
       return { status: "existing" };
     }
@@ -112,8 +129,13 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
       return { status: "limit" };
     }
     const normalized = name.toLowerCase();
-    db.prepare("INSERT INTO tags (name, normalized_name) VALUES (?, ?) ON CONFLICT (normalized_name) DO NOTHING").run(name, normalized);
-    const tagId = db.prepare("SELECT id FROM tags WHERE normalized_name=?").get(normalized).id;
+    if (spaceId == null) {
+      db.prepare("INSERT INTO tags (name, normalized_name) VALUES (?, ?) ON CONFLICT (normalized_name) DO NOTHING").run(name, normalized);
+      var tagId = db.prepare("SELECT id FROM tags WHERE normalized_name=?").get(normalized).id;
+    } else {
+      db.prepare("INSERT INTO tags (name, normalized_name, space_id) VALUES (?, ?, ?) ON CONFLICT (space_id, normalized_name) DO NOTHING").run(name, normalized, spaceId);
+      var tagId = db.prepare("SELECT id FROM tags WHERE space_id=? AND normalized_name=?").get(spaceId, normalized).id;
+    }
     db.prepare("INSERT INTO element_tags (element_id, tag_id) VALUES (?, ?)").run(id, tagId);
     return { status: "added", tagId };
   }
@@ -124,14 +146,24 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
     }
   }
 
-  function findImageByHash(hash) {
+  function findImageByHash(hash, spaceId) {
+    const sid = spaceId === undefined ? null : resolveSpaceId(spaceId);
+    if (sid == null) {
+      return db.prepare(`SELECT e.id, e.deleted_at, i.storage_key FROM element_images i JOIN elements e ON e.id = i.element_id
+        WHERE i.content_hash = ? ORDER BY e.deleted_at IS NOT NULL, e.id LIMIT 1`).get(hash);
+    }
     return db.prepare(`SELECT e.id, e.deleted_at, i.storage_key FROM element_images i JOIN elements e ON e.id = i.element_id
-      WHERE i.content_hash = ? ORDER BY e.deleted_at IS NOT NULL, e.id LIMIT 1`).get(hash);
+      WHERE i.content_hash = ? AND e.space_id=? ORDER BY e.deleted_at IS NOT NULL, e.id LIMIT 1`).get(hash, sid);
   }
 
-  function findVideoByHash(hash) {
+  function findVideoByHash(hash, spaceId) {
+    const sid = spaceId === undefined ? null : resolveSpaceId(spaceId);
+    if (sid == null) {
+      return db.prepare(`SELECT e.id, e.deleted_at, v.storage_key FROM element_videos v JOIN elements e ON e.id=v.element_id
+        WHERE v.content_hash=? ORDER BY e.deleted_at IS NOT NULL, e.id LIMIT 1`).get(hash);
+    }
     return db.prepare(`SELECT e.id, e.deleted_at, v.storage_key FROM element_videos v JOIN elements e ON e.id=v.element_id
-      WHERE v.content_hash=? ORDER BY e.deleted_at IS NOT NULL, e.id LIMIT 1`).get(hash);
+      WHERE v.content_hash=? AND e.space_id=? ORDER BY e.deleted_at IS NOT NULL, e.id LIMIT 1`).get(hash, sid);
   }
 
   function findRelation(a, b, type = "related", name = "", semantics = {}) {
@@ -150,8 +182,11 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
     if (a === b) throw elementError("不能关联内容自身");
     if (!["related", "title"].includes(type)) throw elementError("不支持此关联类型");
     return transaction(() => {
-      const source = get(a); get(b);
+      const source = get(a); const target = get(b);
       if (type === "title" && source.kind !== "text") throw elementError("只有文字可以作为标题");
+      if (hasSpaces && source.spaceId != null && target.spaceId != null && source.spaceId !== target.spaceId) {
+        throw elementError("不能跨空间建立关联", 400);
+      }
       const [sourceId, targetId] = type === "related" && a > b ? [b, a] : [a, b];
       const kind = type === "title" ? 2 : 1;
       if (kind === 2 && semantics.direction && semantics.direction !== "symmetric") throw elementError("标题关联已有固定方向");
@@ -232,7 +267,7 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
     },
     markers: createVideoMarkerRepository(db, { getElement: get, vocabulary, publicOnly }),
     addTag(id, name) { return transaction(() => { get(id); return addTag(id, name); }); },
-    tagAliases: () => vocabulary.tagAliases({ publicOnly }),
+    tagAliases: (options = {}) => vocabulary.tagAliases({ publicOnly, ...options }),
     lifecycle(id) {
       get(id);
       const nodes = new Map(), relations = new Map(), pending = [id];
@@ -257,11 +292,20 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         truncated: pending.length > 0 || relations.size >= 200 };
     },
     canvas: createCanvasRepository(db, { publicOnly }),
-    tags({ activeOnly = false } = {}) {
-      return db.prepare(`SELECT t.name FROM tags t WHERE EXISTS (
+    spaces,
+    resolveSpaceId,
+    tags({ activeOnly = false, spaceId } = {}) {
+      const sid = resolveSpaceId(spaceId);
+      if (sid == null) {
+        return db.prepare(`SELECT t.name FROM tags t WHERE EXISTS (
+          SELECT 1 FROM ${hasMarkers ? "canonical_content_tag_usage" : "canonical_element_tags"} et JOIN elements e ON e.id = et.element_id
+          WHERE et.tag_id = t.id AND (? = 0 OR e.deleted_at IS NULL)${visibility}
+        ) ORDER BY t.normalized_name`).all(Number(activeOnly)).map((row) => row.name);
+      }
+      return db.prepare(`SELECT t.name FROM tags t WHERE t.space_id=? AND EXISTS (
         SELECT 1 FROM ${hasMarkers ? "canonical_content_tag_usage" : "canonical_element_tags"} et JOIN elements e ON e.id = et.element_id
-        WHERE et.tag_id = t.id AND (? = 0 OR e.deleted_at IS NULL)${visibility}
-      ) ORDER BY t.normalized_name`).all(Number(activeOnly)).map((row) => row.name);
+        WHERE et.tag_id = t.id AND e.space_id=? AND (? = 0 OR e.deleted_at IS NULL)${visibility}
+      ) ORDER BY t.normalized_name`).all(sid, sid, Number(activeOnly)).map((row) => row.name);
     },
     previewImages(before = Number.MAX_SAFE_INTEGER) {
       return db.prepare("SELECT i.element_id,i.storage_key,i.width,i.height FROM element_images i JOIN elements e ON e.id=i.element_id WHERE i.element_id<? AND e.deleted_at IS NULL ORDER BY i.element_id DESC LIMIT 32").all(before);
@@ -288,7 +332,7 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         return { ids, material };
       });
     },
-    list({ q = "", kind = "", scope = "library", material, sort = "updated", tag = "", tags = tag ? [tag] : [], tagMatch = "any", page = 1, pageSize = 36, semanticIds = [], includeDescription = false, supportedKinds = [], stackSimilar = false, stackOf = null, throughPage = page } = {}) {
+    list({ q = "", kind = "", scope = "library", material, sort = "updated", tag = "", tags = tag ? [tag] : [], tagMatch = "any", page = 1, pageSize = 36, semanticIds = [], includeDescription = false, supportedKinds = [], stackSimilar = false, stackOf = null, throughPage = page, spaceId } = {}) {
       if (sort === "usage" && publicOnly) throw elementError("使用统计仅限本机查看", 403);
       if (!["updated", "usage"].includes(sort) || (sort === "usage" && kind !== "text")) throw elementError("无效的排序条件");
       const clauses = [scope === "trash" ? "e.deleted_at IS NOT NULL" : "e.deleted_at IS NULL"];
@@ -296,6 +340,8 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
       if (scope === "library" && !kind) clauses.push("e.kind IN(1,2,5)");
       if (publicOnly) clauses.push("e.local_only=0");
       const values = [];
+      const sid = resolveSpaceId(spaceId);
+      if (sid != null) { clauses.push("e.space_id=?"); values.push(sid); }
       const stacks = scope !== "trash" && (stackSimilar || stackOf) ? cachedStacks() : null;
       let stackKind;
       if (stackOf) {
@@ -313,11 +359,11 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
       if (tagMatch === "all") {
         for (const tag of tags) {
           clauses.push(`EXISTS (SELECT 1 FROM ${hasMarkers && !supportedKinds.length ? "canonical_content_tag_usage" : "canonical_element_tags"} et JOIN tags t ON t.id = et.tag_id WHERE et.element_id = e.id AND t.normalized_name = ?)`);
-          values.push(vocabulary.tag(tag)?.normalizedName ?? tag);
+          values.push(vocabulary.tag(tag, sid)?.normalizedName ?? tag.toLowerCase());
         }
       } else if (tags.length) {
         clauses.push(`EXISTS (SELECT 1 FROM ${hasMarkers && !supportedKinds.length ? "canonical_content_tag_usage" : "canonical_element_tags"} et JOIN tags t ON t.id = et.tag_id WHERE et.element_id = e.id AND t.normalized_name IN (SELECT value FROM json_each(?)))`);
-        values.push(JSON.stringify(tags.map((tag) => vocabulary.tag(tag)?.normalizedName ?? tag)));
+        values.push(JSON.stringify(tags.map((tag) => vocabulary.tag(tag, sid)?.normalizedName ?? tag.toLowerCase())));
       }
       let literal = "";
       const literalValues = [];
@@ -411,7 +457,7 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
     },
     importImage(content, file, missingStorageKey) {
       return transaction(() => {
-        const existing = findImageByHash(file.contentHash);
+        const existing = findImageByHash(file.contentHash, content.spaceId);
         if (existing?.deleted_at) throw elementError("相同图片已在回收站，请恢复后再导入以补充标签", 409);
         if (existing) {
           addTags(existing.id, content.tags);
@@ -426,8 +472,12 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
             .run(Date.now(), existing.id);
           return { element: { ...get(existing.id), importStatus: "reused" }, keepFile };
         }
-        const sameName = db.prepare(`SELECT 1 FROM element_images i JOIN elements e ON e.id = i.element_id
-          WHERE i.original_name = ? AND e.deleted_at IS NULL LIMIT 1`).get(file.originalName);
+        const imageSpace = resolveSpaceId(content.spaceId);
+        const sameName = imageSpace == null
+          ? db.prepare(`SELECT 1 FROM element_images i JOIN elements e ON e.id = i.element_id
+              WHERE i.original_name = ? AND e.deleted_at IS NULL LIMIT 1`).get(file.originalName)
+          : db.prepare(`SELECT 1 FROM element_images i JOIN elements e ON e.id = i.element_id
+              WHERE i.original_name = ? AND e.deleted_at IS NULL AND e.space_id=? LIMIT 1`).get(file.originalName, imageSpace);
         const id = insert("image", content);
         db.prepare("INSERT INTO element_images (element_id, storage_key, mime_type, byte_size, original_name, content_hash) VALUES (?, ?, ?, ?, ?, ?)")
           .run(id, file.storageKey, file.mimeType, file.byteSize, file.originalName, file.contentHash);
@@ -438,7 +488,7 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
     },
     importVideo(content, file, missingStorageKey) {
       return transaction(() => {
-        const existing = findVideoByHash(file.contentHash);
+        const existing = findVideoByHash(file.contentHash, content.spaceId);
         if (existing?.deleted_at) throw elementError("相同视频已在回收站，请恢复后再导入以补充标签", 409);
         if (existing) {
           addTags(existing.id, content.tags);
@@ -449,8 +499,12 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
             .run(new Date().toISOString(), Number(Boolean(content.localOnly)), existing.id);
           return { element: { ...get(existing.id), importStatus: "reused" }, keepFile };
         }
-        const sameName = db.prepare(`SELECT 1 FROM element_videos v JOIN elements e ON e.id=v.element_id
-          WHERE v.original_name=? AND e.deleted_at IS NULL LIMIT 1`).get(file.originalName);
+        const videoSpace = resolveSpaceId(content.spaceId);
+        const sameName = videoSpace == null
+          ? db.prepare(`SELECT 1 FROM element_videos v JOIN elements e ON e.id=v.element_id
+              WHERE v.original_name=? AND e.deleted_at IS NULL LIMIT 1`).get(file.originalName)
+          : db.prepare(`SELECT 1 FROM element_videos v JOIN elements e ON e.id=v.element_id
+              WHERE v.original_name=? AND e.deleted_at IS NULL AND e.space_id=? LIMIT 1`).get(file.originalName, videoSpace);
         const id = insert("video", content);
         db.prepare("INSERT INTO element_videos(element_id,storage_key,mime_type,byte_size,original_name,content_hash) VALUES(?,?,?,?,?,?)")
           .run(id, file.storageKey, file.mimeType, file.byteSize, file.originalName, file.contentHash);
@@ -477,9 +531,16 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         const result = db.prepare("UPDATE elements SET body = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL")
           .run(content.body, new Date().toISOString(), id);
         if (!result.changes) throw elementError("内容不存在或已移入回收站", 404);
-        db.prepare(`DELETE FROM element_tags WHERE element_id=? AND tag_id NOT IN
-          (SELECT id FROM resolved_tags WHERE normalized_name IN (SELECT value FROM json_each(?)))`)
-          .run(id, JSON.stringify(vocabulary.tags(content.tags)));
+        const updateSpace = elementSpaceId(id);
+        if (updateSpace == null) {
+          db.prepare(`DELETE FROM element_tags WHERE element_id=? AND tag_id NOT IN
+            (SELECT id FROM resolved_tags WHERE normalized_name IN (SELECT value FROM json_each(?)))`)
+            .run(id, JSON.stringify(vocabulary.tags(content.tags)));
+        } else {
+          db.prepare(`DELETE FROM element_tags WHERE element_id=? AND tag_id NOT IN
+            (SELECT id FROM resolved_tags WHERE space_id=? AND normalized_name IN (SELECT value FROM json_each(?)))`)
+            .run(id, updateSpace, JSON.stringify(vocabulary.tags(content.tags, updateSpace)));
+        }
         addTags(id, content.tags);
         return get(id);
       });
@@ -540,8 +601,11 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         get(sourceId);
         const createdAt = new Date().toISOString();
         if (targetTags) {
+          const sourceSpace = elementSpaceId(sourceId);
           const targets = targetTags.map((name) => {
-            const tag = db.prepare("SELECT id FROM tags WHERE normalized_name = ?").get(name.toLowerCase());
+            const tag = sourceSpace == null
+              ? db.prepare("SELECT id FROM tags WHERE normalized_name = ?").get(name.toLowerCase())
+              : db.prepare("SELECT id FROM tags WHERE space_id=? AND normalized_name = ?").get(sourceSpace, name.toLowerCase());
             if (!tag) throw elementError(`标签不存在：${name}`, 404);
             return tag.id;
           });

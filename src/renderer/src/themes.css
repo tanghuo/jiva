@@ -25,6 +25,7 @@
   --info: #3986d5;
   --ease-out: cubic-bezier(.2, .7, .2, 1); --duration-fast: 120ms; --duration: 180ms;
   --z-sticky: 5; --z-menu: 20; --z-toast: 40;
+  --space-accent: #6B7C93;
 }
 /* Color tokens per theme. 暖纸 (paper) is the light default and 夜幕 (night) the dark one;
    "auto" follows the operating system between the two. The same tokens paint the theme previews. */
@@ -200,7 +201,7 @@
    One accent system: C no longer defines its own --c-accent; primary buttons, chips and focus all use the
    theme's --accent / --accent-hover / --on-accent, so 主题色 in 设置 really changes the primary colour. */
 :root, [data-theme="paper"], [data-theme="auto"], [data-theme="sage"], [data-theme="light"] {
-  --win-gradient: linear-gradient(165deg, #F3EBDD 0%, #D9E2DA 48%, #C5D0DC 100%);
+  --win-gradient: linear-gradient(165deg, color-mix(in srgb, var(--space-accent) 8%, #F3EBDD) 0%, color-mix(in srgb, var(--space-accent) 6%, #D9E2DA) 48%, color-mix(in srgb, var(--space-accent) 8%, #C5D0DC) 100%);
   --win-gradient-soft: linear-gradient(165deg,
     color-mix(in srgb, #F3EBDD 40%, var(--bg)) 0%,
     color-mix(in srgb, #D9E2DA 28%, var(--bg)) 55%,

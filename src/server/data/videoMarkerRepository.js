@@ -39,14 +39,25 @@ export function createVideoMarkerRepository(db, { getElement, vocabulary, public
       if (targetId === videoId) throw elementError("标注已属于当前视频，无需关联自身");
       if (!existing.has(targetId)) getElement(targetId);
     }
-    const canonicalNames = vocabulary.tags(content.tags);
-    db.prepare(`DELETE FROM video_marker_tags WHERE marker_id=? AND tag_id NOT IN
-      (SELECT id FROM resolved_tags WHERE normalized_name IN(SELECT value FROM json_each(?)))`).run(id, JSON.stringify(canonicalNames));
+    const spaceId = db.prepare("SELECT space_id AS id FROM elements WHERE id=?").get(videoId)?.id;
+    const canonicalNames = vocabulary.tags(content.tags, spaceId);
+    if (spaceId == null) {
+      db.prepare(`DELETE FROM video_marker_tags WHERE marker_id=? AND tag_id NOT IN
+        (SELECT id FROM resolved_tags WHERE normalized_name IN(SELECT value FROM json_each(?)))`).run(id, JSON.stringify(canonicalNames));
+    } else {
+      db.prepare(`DELETE FROM video_marker_tags WHERE marker_id=? AND tag_id NOT IN
+        (SELECT id FROM resolved_tags WHERE space_id=? AND normalized_name IN(SELECT value FROM json_each(?)))`).run(id, spaceId, JSON.stringify(canonicalNames));
+    }
     for (const name of content.tags) {
-      const canonical = vocabulary.tag(name);
+      const canonical = vocabulary.tag(name, spaceId);
       if (canonical && db.prepare("SELECT 1 FROM canonical_video_marker_tags WHERE marker_id=? AND tag_id=?").get(id, canonical.id)) continue;
-      db.prepare("INSERT INTO tags(name,normalized_name) VALUES(?,?) ON CONFLICT(normalized_name) DO NOTHING").run(name, name.toLowerCase());
-      const tagId = db.prepare("SELECT id FROM tags WHERE normalized_name=?").get(name.toLowerCase()).id;
+      if (spaceId == null) {
+        db.prepare("INSERT INTO tags(name,normalized_name) VALUES(?,?) ON CONFLICT(normalized_name) DO NOTHING").run(name, name.toLowerCase());
+        var tagId = db.prepare("SELECT id FROM tags WHERE normalized_name=?").get(name.toLowerCase()).id;
+      } else {
+        db.prepare("INSERT INTO tags(name,normalized_name,space_id) VALUES(?,?,?) ON CONFLICT(space_id,normalized_name) DO NOTHING").run(name, name.toLowerCase(), spaceId);
+        var tagId = db.prepare("SELECT id FROM tags WHERE space_id=? AND normalized_name=?").get(spaceId, name.toLowerCase()).id;
+      }
       db.prepare("INSERT INTO video_marker_tags VALUES(?,?)").run(id, tagId);
     }
     db.prepare("DELETE FROM video_marker_links WHERE marker_id=? AND target_id NOT IN(SELECT value FROM json_each(?))").run(id, JSON.stringify(content.targetIds));

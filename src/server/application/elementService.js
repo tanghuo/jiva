@@ -41,9 +41,27 @@ export function createElementService(repo, imageStore, videoStore) {
       }
     },
     list: (query) => repo.list(query),
+    listSpaces: () => repo.spaces?.list() || [],
+    createSpace: (payload) => {
+      if (!repo.spaces) throw elementError("当前库不支持空间", 500);
+      return repo.spaces.create(payload);
+    },
+    updateSpace: (id, payload) => {
+      if (!repo.spaces) throw elementError("当前库不支持空间", 500);
+      return repo.spaces.update(id, payload);
+    },
+    deleteSpace: (id) => {
+      if (!repo.spaces) throw elementError("当前库不支持空间", 500);
+      return repo.spaces.remove(id);
+    },
+    moveElements: (fromSpaceId, payload) => {
+      if (!repo.spaces) throw elementError("当前库不支持空间", 500);
+      return repo.spaces.moveElements(fromSpaceId, payload);
+    },
+    resolveSpaceId: (spaceId) => repo.resolveSpaceId?.(spaceId) ?? null,
     tags: (options) => repo.tags(options),
-    tagAliases: () => repo.tagAliases(),
-    vocabulary: () => repo.vocabulary.read(),
+    tagAliases: (options) => repo.tagAliases(options),
+    vocabulary: (options) => repo.vocabulary.read(options),
     setAlias: (payload) => repo.vocabulary.setAlias(vocabularyAlias(payload)),
     removeAlias: (kind, id) => repo.vocabulary.removeAlias(vocabularyKind(kind), elementId(id)),
     get: (id) => repo.get(id),
@@ -71,9 +89,9 @@ export function createElementService(repo, imageStore, videoStore) {
     deleteMarker: (id, payload) => repo.markers.remove(id, markerRevision(payload.revision)),
     videoReferences: (id, query) => repo.markers.references(id, query),
     create(payload) {
-      const { material = false, ...content } = payload;
+      const { material = false, spaceId, ...content } = payload;
       if (typeof material !== "boolean") throw elementError("无效的素材标记");
-      return repo.createText({ ...elementContent(content), material, creationSource: "manual" });
+      return repo.createText({ ...elementContent(content), material, creationSource: "manual", spaceId });
     },
     update: (id, payload) => repo.update(id, elementContent(payload, repo.get(id))),
     trash: (id) => repo.trash(id),
@@ -115,7 +133,7 @@ export function createElementService(repo, imageStore, videoStore) {
       const file = repo.image(id, { trash });
       return { bytes: await imageStore.thumbnail(file.storageKey, width === null ? undefined : Number(width), { foreground, regenerate }), contentType: "image/webp" };
     },
-    async importImage(bytes, name, inputTags = [], material = false) {
+    async importImage(bytes, name, inputTags = [], material = false, spaceId) {
       if (importing >= 2) throw elementError("正在保存图片，请稍后重试", 503);
       const tags = elementTags(inputTags);
       const originalName = name.split(/[\\/]/).pop().slice(0, 240) || "图片";
@@ -125,9 +143,9 @@ export function createElementService(repo, imageStore, videoStore) {
         let result;
         try {
           file.contentHash = createHash("sha256").update(bytes).digest("hex");
-          const existing = repo.findImageByHash(file.contentHash);
+          const existing = repo.findImageByHash(file.contentHash, spaceId);
           const missingStorageKey = existing && !existing.deleted_at && !await imageStore.exists(existing.storage_key) ? existing.storage_key : undefined;
-          result = repo.importImage({ tags, material, creationSource: "manual" }, file, missingStorageKey);
+          result = repo.importImage({ tags, material, creationSource: "manual", spaceId }, file, missingStorageKey);
         }
         catch (error) { await imageStore.remove(file.storageKey).catch(() => {}); throw error; }
         // The import is committed: a failed cleanup of the duplicate copy must not report failure.
@@ -144,7 +162,7 @@ export function createElementService(repo, imageStore, videoStore) {
       const file = repo.image(id);
       return readEmbeddedPrompt(await imageStore.read(file.storageKey));
     },
-    async importVideo(stream, name, inputTags = [], material = false) {
+    async importVideo(stream, name, inputTags = [], material = false, spaceId) {
       if (importingVideos >= 2) throw elementError("正在保存视频，请稍后重试", 503);
       const tags = elementTags(inputTags);
       const filename = name.split(/[\\/]/).pop();
@@ -156,9 +174,9 @@ export function createElementService(repo, imageStore, videoStore) {
         const file = await videoStore.save(stream, originalName);
         let result;
         try {
-          const existing = repo.findVideoByHash(file.contentHash);
+          const existing = repo.findVideoByHash(file.contentHash, spaceId);
           const missingStorageKey = existing && !existing.deleted_at && !await videoStore.exists(existing.storage_key) ? existing.storage_key : undefined;
-          result = repo.importVideo({ tags, material, creationSource: "manual" }, file, missingStorageKey);
+          result = repo.importVideo({ tags, material, creationSource: "manual", spaceId }, file, missingStorageKey);
         } catch (error) { await videoStore.remove(file.storageKey).catch(() => {}); throw error; }
         // Committed: a failed cleanup of the duplicate upload must not turn success into an error.
         if (!result.keepFile) await videoStore.remove(file.storageKey).catch((error) => console.error("[jiva] duplicate video cleanup failed:", error.message));

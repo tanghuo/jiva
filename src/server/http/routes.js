@@ -1,5 +1,6 @@
 import { httpError, json, text, readJson, serveStatic } from "./http.js";
 import { handleElementRoute } from "./elementRoutes.js";
+import { handleSpaceRoute } from "./spaceRoutes.js";
 import { handleOrganizationRoute } from "./organizationRoutes.js";
 import { handleVideoAnalysisRoute } from "./videoAnalysisRoutes.js";
 import { handleWorkflowRoute } from './workflowRoutes.js';
@@ -97,6 +98,7 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
       if (temporaryShares && await handleTemporaryShareRoute(temporaryShares, req, res, url, access)) return;
       if (organization && await handleOrganizationRoute(organization, req, res, url)) return;
       if (videoAnalysis && await handleVideoAnalysisRoute(videoAnalysis, req, res, url)) return;
+      if (wiki && await handleSpaceRoute(wiki, req, res, url)) return;
       if (wiki && await handleElementRoute(wiki, req, res, url, semantic, { allowTrashPreview: access === "local", allowUsageStats: access === "local", allowMaterialWrite: access === "local" })) return;
       const handler = routes.get(`${req.method} ${url.pathname}`);
       if (handler) await handler(req, res, url);

@@ -147,8 +147,8 @@ test("Tag canvas bounds mixed cards and previews while folder counts exceed the 
   const db = new DatabaseSync(path.join(dataDir, "library.sqlite3"));
   try {
     db.exec("BEGIN");
-    const element = db.prepare("INSERT INTO elements(kind,body,created_at,updated_at) VALUES (1,?,'now','now')");
-    const tag = db.prepare("INSERT INTO tags(name,normalized_name) VALUES (?,?)");
+    const element = db.prepare("INSERT INTO elements(kind,body,created_at,updated_at,space_id) VALUES (1,?,'now','now',1)");
+    const tag = db.prepare("INSERT INTO tags(name,normalized_name,space_id) VALUES (?,?,1)");
     const link = db.prepare("INSERT INTO element_tags(element_id,tag_id) VALUES (?,?)");
     const main = Number(tag.run("Main", "main").lastInsertRowid);
     for (let i = 0; i < 400; i++) link.run(Number(element.run(`Shared ${i}`).lastInsertRowid), main);

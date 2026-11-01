@@ -580,7 +580,7 @@ test("v1 upgrade hashes old originals, preserves old duplicates and relations, a
   app = await createServer({ port: 0, dataDir: dir });
   const check = new DatabaseSync(path.join(dir, "library.sqlite3"), { readOnly: true });
   try {
-    assert.deepEqual(check.prepare("SELECT version FROM wiki_schema ORDER BY version").all().map((r) => r.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]);
+    assert.deepEqual(check.prepare("SELECT version FROM wiki_schema ORDER BY version").all().map((r) => r.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]);
     const after = check.prepare("SELECT id, kind, body, created_at, deleted_at FROM elements ORDER BY id").all();
     assert.deepEqual(after, before);
     assert.equal(check.prepare("SELECT count(*) AS n FROM element_images WHERE content_hash IS NOT NULL").get().n, 2);
