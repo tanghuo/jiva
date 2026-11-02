@@ -10,6 +10,7 @@
 .magnet-task-list button { display:flex; flex-direction:column; align-items:start; text-align:left; width:100%; gap:6px; margin-block:8px; padding:12px; border-radius:var(--r-lg); }
 .magnet-task-list button[aria-current=true] { outline:2px solid var(--accent); }
 .magnet-source { overflow-wrap:anywhere; }
+.magnet-task-name { overflow-wrap:anywhere; white-space:normal; }
 .magnet-actions { display:flex; flex-wrap:wrap; gap:8px; margin-block:14px; }
 .magnet-plan article { padding:14px 0; border-bottom:1px solid var(--line); }
 .magnet-thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-block:12px; }

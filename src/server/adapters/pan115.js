@@ -27,22 +27,33 @@ export function run115Process(executable, args, input, { signal, timeout = 18000
   });
 }
 
-export function create115Adapter({ dataDir, binary = path.join(import.meta.dirname, '115bridge', process.platform === 'win32' ? '115bridge.exe' : '115bridge') }) {
+export function create115Adapter({ dataDir, binary = path.join(import.meta.dirname, '115bridge', process.platform === 'win32' ? '115bridge.exe' : '115bridge'), processRunner = run115Process, now = Date.now }) {
   const secrets = path.join(dataDir, '.secrets', '115'), sessions = new Map();
+  const taskSnapshots = new Map();
   async function crypt(value, decrypt = false) {
     if (process.platform !== 'win32') throw importError('当前 115 连接需要 Windows 安全存储', 503);
     const operation = decrypt ? 'Unprotect' : 'Protect';
     const decode = decrypt ? '[Convert]::FromBase64String($v)' : '[Text.Encoding]::UTF8.GetBytes($v)';
     const encode = decrypt ? '[Text.Encoding]::UTF8.GetString($d)' : '[Convert]::ToBase64String($d)';
     const script = `Add-Type -AssemblyName System.Security; $v=[Console]::In.ReadToEnd(); $b=${decode}; $d=[Security.Cryptography.ProtectedData]::${operation}($b,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser); [Console]::Out.Write(${encode})`;
-    return run115Process('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], value);
+    return processRunner('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], value);
   }
   function secretPath(accountId) { if (!/^\d+$/.test(String(accountId))) throw importError('115 账号标识无效'); return path.join(secrets, `${accountId}.dpapi`); }
   async function invoke(input, options) {
     let result;
-    try { result = JSON.parse(await run115Process(binary, [], JSON.stringify(input), options)); }
+    try { result = JSON.parse(await processRunner(binary, [], JSON.stringify(input), options)); }
     catch (e) { if (e.statusCode) throw e; throw importError('115 辅助程序返回无效数据', 502); }
-    if (!result.ok) throw importError(`115 操作失败：${/^[A-Z_]+$/.test(result.code) ? result.code : 'UNKNOWN'}`, 502, result.code);
+    if (!result.ok) {
+      const messages = {
+        AUTH_REQUIRED: '115 登录已失效，请用任务原账号重新扫码登录',
+        REMOTE_BLOCKED: '115 暂时拒绝接口访问（HTTP 403/405/429），已暂停重试。请稍后从当前阶段重试，无需新建任务',
+        REMOTE_NETWORK_FAILED: '连接 115 失败，请检查网络后重试',
+        REMOTE_HTTP_FAILED: '115 接口暂时不可用，请稍后重试',
+        REMOTE_RESPONSE_INVALID: '115 返回的数据格式异常，请稍后重试',
+      };
+      const code = /^[A-Z_]+$/.test(result.code) ? result.code : 'UNKNOWN';
+      throw importError(messages[code] || `115 操作失败：${code}`, ['AUTH_REQUIRED', 'REMOTE_BLOCKED'].includes(code) ? 409 : 502, code);
+    }
     return result.data;
   }
   async function qrRequest(url, options = {}) {
@@ -58,10 +69,25 @@ export function create115Adapter({ dataDir, binary = path.join(import.meta.dirna
   return {
     async available() { try { await access(binary); return process.platform === 'win32'; } catch { return false; } },
     async call(accountId, action, fields = {}, options) {
+      options?.signal?.throwIfAborted();
+      const key = String(accountId), snapshot = taskSnapshots.get(key);
+      if (action === 'tasks' && snapshot?.expires > now()) {
+        if (snapshot.error) throw snapshot.error;
+        return structuredClone(snapshot.data);
+      }
       let credential;
       try { credential = JSON.parse(await crypt(await readFile(secretPath(accountId), 'utf8'), true)); }
       catch { throw importError('请用原 115 账号重新登录', 409, 'AUTH_REQUIRED'); }
-      return invoke({ ...fields, action, credential }, options);
+      try {
+        const data = await invoke({ ...fields, action, credential }, options);
+        if (action === 'tasks') taskSnapshots.set(key, { data: structuredClone(data), expires: now() + 30000 });
+        return data;
+      } catch (error) {
+        if (action === 'tasks' && error.code !== 'IMPORT_STOPPED') taskSnapshots.set(key, { error, expires: now() + (error.code === 'REMOTE_BLOCKED' ? 60000 : 15000) });
+        throw error;
+      } finally {
+        if (action === 'submit') taskSnapshots.delete(key);
+      }
     },
     extract: (fields, options) => invoke({ ...fields, action: 'extract' }, options),
     async loginStart() {
@@ -97,6 +123,7 @@ export function create115Adapter({ dataDir, binary = path.join(import.meta.dirna
         try { await writeFile(temp, await crypt(JSON.stringify(credential)), { flag: 'wx', mode: 0o600 }); await rename(temp, target); }
         finally { await rm(temp, { force: true }); }
         sessions.delete(id);
+        taskSnapshots.delete(String(identity.accountId));
         return { status: 'connected', accountId: String(identity.accountId) };
       } finally { entry.busy = false; }
     },

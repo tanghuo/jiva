@@ -97,10 +97,33 @@ test("album grid keeps rectangular images and viewer preserves browsing context"
   await page.waitForFunction(() => document.querySelector(".wiki-album-filmstrip").scrollLeft === 0);
   await page.mouse.wheel(160, 0);
   await page.waitForFunction(() => document.querySelector(".wiki-album-filmstrip").scrollLeft > 0);
+  // Wheel over either arrow changes images, while the image retains wheel zoom.
+  const nextArrow = viewer.getByRole("button", { name: "下一张", exact: true });
+  const previousArrow = viewer.getByRole("button", { name: "上一张", exact: true });
+  await nextArrow.hover();
+  await page.mouse.wheel(0, 100);
+  await page.waitForFunction(() => document.querySelector(".wiki-album-page-count")?.textContent === "26 / 30");
+  await nextArrow.evaluate((button) => {
+    for (let i = 0; i < 3; i++) button.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, bubbles: true, cancelable: true }));
+  });
+  await page.waitForFunction(() => document.querySelector(".wiki-album-page-count")?.textContent === "29 / 30");
+  assert.equal(await viewer.locator(".wiki-album-zoom-value").textContent(), "适应", "Wheeling an arrow must not zoom the image");
+  await nextArrow.evaluate((button) => {
+    for (let i = 0; i < 4; i++) button.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true }));
+  });
+  await page.waitForFunction(() => document.querySelector(".wiki-album-page-count")?.textContent === "25 / 30");
   await page.keyboard.press("ArrowRight");
   assert.equal(await viewer.locator(".wiki-album-page-count").textContent(), "26 / 30");
   await page.keyboard.press("End");
   assert.equal(await viewer.getByRole("button", { name: "下一张", exact: true }).isDisabled(), true);
+  await page.waitForTimeout(160);
+  await nextArrow.hover({ force: true });
+  await page.mouse.wheel(0, -100);
+  await page.waitForFunction(() => document.querySelector(".wiki-album-page-count")?.textContent === "29 / 30");
+  await page.waitForTimeout(160);
+  await previousArrow.hover();
+  await page.mouse.wheel(0, 100);
+  await page.waitForFunction(() => document.querySelector(".wiki-album-page-count")?.textContent === "30 / 30");
   await page.keyboard.press("Home");
   assert.equal(await viewer.getByRole("button", { name: "上一张", exact: true }).isDisabled(), true);
   await viewer.locator(".yarl__slide_current img").waitFor({ state: "visible" });
@@ -262,5 +285,92 @@ test("album filmstrip thumbnails load through the real image API", { timeout: 60
   await page.keyboard.press("ArrowRight");
   await page.waitForFunction(() => document.querySelector(".wiki-album-page-count")?.textContent === "2 / 3");
   await page.locator(".yarl__slide_current img").waitFor({ state: "visible" });
-  await page.keyboard.press("Escape");
+  const viewer = page.getByRole("dialog", { name: "图集浏览" });
+  await page.locator(".yarl__slide_current img").click();
+  assert.equal(await viewer.isVisible(), true, "Clicking the image keeps the viewer open");
+  await details.locator(".wiki-album-details-name").click();
+  assert.equal(await viewer.isVisible(), true, "Clicking image details keeps the viewer open");
+  const resetZoom = viewer.getByRole("button", { name: "重置缩放", exact: true });
+  if (await resetZoom.isEnabled()) await resetZoom.click();
+  await page.waitForFunction(() => {
+    const img = document.querySelector(".yarl__slide_current img");
+    const stage = document.querySelector(".wiki-album-viewer-stage");
+    return img.getBoundingClientRect().width < stage.clientWidth / 2;
+  });
+  const stage = await viewer.locator(".wiki-album-viewer-stage").boundingBox();
+  const blank = { x: stage.x + 12, y: stage.y + 12 };
+  await page.mouse.move(blank.x, blank.y);
+  await page.mouse.down();
+  await page.mouse.move(blank.x + 25, blank.y + 25, { steps: 5 });
+  await page.mouse.move(blank.x, blank.y, { steps: 5 });
+  await page.mouse.up();
+  assert.equal(await viewer.isVisible(), true, "Dragging through blank space does not close the viewer");
+  if (await resetZoom.isEnabled()) await resetZoom.click();
+  await page.waitForFunction(() => {
+    const img = document.querySelector(".yarl__slide_current img");
+    return img.getBoundingClientRect().width < document.querySelector(".wiki-album-viewer-stage").clientWidth / 2;
+  });
+  // Let any zoom and swipe animations settle before clicking the background.
+  await page.waitForTimeout(400);
+  await page.mouse.click(blank.x, blank.y);
+  await viewer.waitFor({ state: "detached" });
+  assert.equal(await page.getByRole("button", { name: "开始浏览", exact: true }).isVisible(), true);
 });
+
+test("album overview exposes 方格|长条 only and keeps toggle outside manage mode", async () => {
+  const page = await readFile(path.join(root, "src/renderer/src/AlbumPage.jsx"), "utf8");
+  assert.match(page, /wiki-album-toolbar/);
+  assert.match(page, /aria-label="总览布局"/);
+  assert.match(page, />方格</);
+  assert.match(page, />长条</);
+  assert.doesNotMatch(page, />照片墙</);
+  assert.doesNotMatch(page, />等比</);
+  assert.doesNotMatch(page, />齐行</);
+  assert.doesNotMatch(page, /layout === "wall"|changeLayout\("wall"\)|packAlbumWall|wiki-album-wall/);
+  const manageStart = page.indexOf("wiki-album-manage-bar");
+  const manageEnd = page.indexOf("wiki-album-toolbar");
+  assert.ok(manageStart > 0 && manageEnd > manageStart);
+  const manageChunk = page.slice(manageStart, manageEnd);
+  assert.doesNotMatch(manageChunk, /wiki-album-view-toggle|方格|长条/);
+  assert.match(page, /!managing && <Button variant="primary"/);
+  assert.match(page, /variant="secondary"[^>]*>保存标题与标签/);
+  assert.match(page, /wikiAlbumView|readStoredAlbumLayout|persistAlbumLayout/);
+});
+
+test("album overview has no photo wall and no hover/space quick preview", async () => {
+  const page = await readFile(path.join(root, "src/renderer/src/AlbumPage.jsx"), "utf8");
+  assert.doesNotMatch(page, /wiki-album-preview-float|wiki-album-preview-card|PREVIEW_HOVER_MS|悬停或按住空格快预览/);
+  assert.doesNotMatch(page, /is-preview-hot|has-preview|openPreview|closePreview/);
+  assert.doesNotMatch(page, /aria-pressed=\{layout === "preview"\}/);
+  assert.doesNotMatch(page, /albumWallLayout|packAlbumWall|visibleWallPlacements|wallTraits|wiki-album-wall/);
+  assert.doesNotMatch(page, /照片墙/);
+  const css = await readFile(path.join(root, "src/renderer/src/wiki.css"), "utf8");
+  assert.doesNotMatch(css, /\.wiki-album-preview-float|is-preview-hot/);
+  assert.doesNotMatch(css, /\.wiki-album-wall|\.is-wall-stage/);
+  assert.match(css, /minmax\(72px, 12vw\)/);
+  assert.match(page, /from "\.\/albumLayout\.js"/);
+});
+
+test("album strip layout is comic continuous reading (no third segment)", async () => {
+  const page = await readFile(path.join(root, "src/renderer/src/AlbumPage.jsx"), "utf8");
+  const css = await readFile(path.join(root, "src/renderer/src/wiki.css"), "utf8");
+  assert.match(page, />方格</);
+  assert.match(page, />长条</);
+  assert.doesNotMatch(page, />漫画连读</);
+  assert.doesNotMatch(page, />照片墙</);
+  assert.match(page, /wiki-album-strip-progress/);
+  assert.match(page, /is-strip-stage/);
+  assert.match(css, /\.wiki-album-grid\.is-strip/);
+  assert.match(css, /gap:\s*2px/);
+  assert.match(css, /object-fit:\s*contain/);
+  assert.match(css, /wiki-album-strip-progress/);
+  assert.match(css, /border-radius:\s*0/);
+  assert.doesNotMatch(page, /漫画连读/);
+  assert.doesNotMatch(css, /\.wiki-album-wall|\.is-wall-stage/);
+  assert.doesNotMatch(css, /wiki-album-tile-open[^}]*rotate\(/s);
+});
+
+
+
+
+

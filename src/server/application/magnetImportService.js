@@ -19,7 +19,7 @@ export function createMagnetImportService({ repo, wiki, adapter, store, limits }
       let run = live(id);
       const c = connection(run);
       const call = (action, fields = {}, options = {}) => adapter.call(c.accountId, action, fields, { signal, ...options });
-      patch(id, { state: 'running', error: '' });
+      patch(id, { state: 'running', error: '', errorCode: '' });
       for (let steps = 0; steps < 8; steps++) {
         run = live(id); signal.throwIfAborted();
         if (Date.now() - started > limits.stageMs) throw importError('阶段执行时间超限', 408);
@@ -38,6 +38,7 @@ export function createMagnetImportService({ repo, wiki, adapter, store, limits }
         if (run.stage === 'wait') {
           const tasks = await call('tasks'), found = tasks.find(t => t.info_hash?.toLowerCase() === run.source.hash); live(id);
           if (!found) throw importError('远端任务不存在，请核对原账号', 409);
+          if (typeof found.name === 'string' && found.name.trim()) patch(id, { remoteName: found.name.trim() });
           if (found.status === -1) throw importError('115 远端离线任务失败，请在 115 中处理后重试', 409);
           if (found.status !== 2) { patch(id, { remoteStatus: found.status === 0 ? '排队中' : '下载中', nextAt: Date.now() + 15000 }); return; }
           if (!/^\d+$/.test(found.file_id) || found.file_id === '0') throw importError('115 未提供精确结果 ID，不能按文件名猜测归属', 409);
@@ -112,8 +113,8 @@ export function createMagnetImportService({ repo, wiki, adapter, store, limits }
       if (error.code === 'IMPORT_STOPPED') return;
       const attempts = (current.attempts || 0) + 1;
       if (submitting && ['QUOTA_EXHAUSTED', 'REMOTE_LINK_INVALID', 'AUTH_REQUIRED'].includes(error.code)) current.submitIntent = false;
-      const transient = ['115_TIMEOUT', 'TASK_LIST_FAILED', 'FILE_LIST_FAILED', 'FILE_STAT_FAILED', 'DOWNLOAD_URL_FAILED', 'DOWNLOAD_FAILED', 'DOWNLOAD_HTTP_FAILED', 'DOWNLOAD_INCOMPLETE'].includes(error.code);
-      repo.save({ ...current, ...(error.code === 'PLAN_CHANGED' ? { plan: null, stage: 'prepare' } : {}), state: transient && attempts < 3 ? 'queued' : error.statusCode === 409 || ['AUTH_REQUIRED', 'QUOTA_EXHAUSTED', 'REMOTE_LINK_INVALID', 'IDENTITY_CHECK_FAILED', 'SUBMISSION_UNKNOWN_RECONCILE_FIRST'].includes(error.code) ? 'attention' : 'failed', error: error.code === 'QUOTA_EXHAUSTED' ? '115 离线配额不足，请在 115 中处理后重试' : error.code === 'AUTH_REQUIRED' ? '115 登录失效，请用原账号重新登录' : error.statusCode ? error.message : '阶段执行失败，请检查文件或服务状态后重试', attempts, nextAt: Date.now() + 5000 * 2 ** Math.min(attempts, 4) });
+      const transient = ['115_TIMEOUT', 'REMOTE_NETWORK_FAILED', 'REMOTE_HTTP_FAILED', 'TASK_LIST_FAILED', 'FILE_LIST_FAILED', 'FILE_STAT_FAILED', 'DOWNLOAD_URL_FAILED', 'DOWNLOAD_FAILED', 'DOWNLOAD_HTTP_FAILED', 'DOWNLOAD_INCOMPLETE'].includes(error.code);
+      repo.save({ ...current, ...(error.code === 'PLAN_CHANGED' ? { plan: null, stage: 'prepare' } : {}), state: transient && attempts < 3 ? 'queued' : error.statusCode === 409 || ['AUTH_REQUIRED', 'REMOTE_BLOCKED', 'QUOTA_EXHAUSTED', 'REMOTE_LINK_INVALID', 'IDENTITY_CHECK_FAILED', 'SUBMISSION_UNKNOWN_RECONCILE_FIRST'].includes(error.code) ? 'attention' : 'failed', errorCode: error.code || '', error: error.code === 'QUOTA_EXHAUSTED' ? '115 离线配额不足，请在 115 中处理后重试' : error.code === 'AUTH_REQUIRED' ? '115 登录失效，请用原账号重新登录' : error.statusCode ? error.message : '阶段执行失败，请检查文件或服务状态后重试', attempts, nextAt: Date.now() + 5000 * 2 ** Math.min(attempts, 4) });
     } finally {
       clearTimeout(timeout);
       try {

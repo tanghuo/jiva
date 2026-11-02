@@ -15,6 +15,10 @@ export default function MagnetImports({ spaces, currentSpaceId, onOpen, onChange
   const [edits, setEdits] = useState([]), [excludeSkipped, setExcludeSkipped] = useState(false), [showConnections, setShowConnections] = useState(false);
   const [inputNotice, setInputNotice] = useState('');
   const torrentPicker = useRef(null), inputBusy = useRef(false);
+  const needsLogin = detail?.errorCode === 'AUTH_REQUIRED' || /AUTH_REQUIRED|IDENTITY_CHECK_FAILED|登录失效|登录已失效|重新登录/.test(detail?.error || '');
+  useEffect(() => {
+    if (showConnections) document.querySelector('.pan115-connections')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [showConnections]);
   async function acceptInput(input) {
     if (inputBusy.current) return;
     inputBusy.current = true; setError(''); setInputNotice('正在读取种子…');
@@ -90,14 +94,16 @@ export default function MagnetImports({ spaces, currentSpaceId, onOpen, onChange
       <button type="submit" disabled={busy || !data?.available || !data?.connections.some(c => c.enabled)}>创建导入任务</button>
     </form>
     <div className="magnet-columns">
-      <section className="magnet-task-list" aria-label="导入任务列表"><h2>导入任务</h2>{!data?.tasks.length && <p>还没有任务。</p>}{data?.tasks.map(t => <button key={t.id} aria-current={id === t.id ? 'true' : undefined} onClick={() => { setId(t.id); if (detail?.id !== t.id) setDetail(null); }}><strong>任务 #{t.id} · {states[t.state]}</strong><span>{stages[t.stage]} · 缓存 {bytes(t.cacheBytes)}</span><small>{t.source.hash.slice(0, 16)}…</small></button>)}</section>
+      <section className="magnet-task-list" aria-label="导入任务列表"><h2>导入任务</h2>{!data?.tasks.length && <p>还没有任务。</p>}{data?.tasks.map(t => <button key={t.id} aria-current={id === t.id ? 'true' : undefined} onClick={() => { setId(t.id); if (detail?.id !== t.id) setDetail(null); }}><strong>任务 #{t.id} · {states[t.state]}</strong><span className="magnet-task-name">{t.remoteName || "等待 115 返回名称"}</span><span>{stages[t.stage]} · 缓存 {bytes(t.cacheBytes)}</span><small>{t.source.hash.slice(0, 16)}…</small></button>)}</section>
       <section className="magnet-task-detail" aria-label="任务详情">{detail && <>
-        <h2>任务 #{detail.id} · {states[detail.state]}</h2><p>{stages[detail.stage]}{detail.remoteStatus ? ` · 115 ${detail.remoteStatus}` : ''} · 目标空间：{spaces.find(s => s.id === detail.spaceId)?.name || `空间 #${detail.spaceId}（不可用）`}</p>
+        <h2>任务 #{detail.id} · {states[detail.state]}</h2><p>{stages[detail.stage]}{detail.remoteStatus ? ` · ${detail.error ? '上次 115 状态：' : '115 '}${detail.remoteStatus}` : ''} · 目标空间：{spaces.find(s => s.id === detail.spaceId)?.name || `空间 #${detail.spaceId}（不可用）`}</p>
+        <p className="magnet-task-name">115 任务名：{detail.remoteName || '等待 115 返回名称'}</p>
         <p>缓存 {bytes(detail.cacheBytes)} · 已导入 {detail.imported} 项{detail.stage === 'download' && ` · 下载文件 ${detail.files.filter(f => f.local).length}/${detail.files.length}`}</p>
         <details><summary>来源与处理记录</summary><p className="magnet-source">{detail.source.original}</p><p>创建：{new Date(detail.createdAt).toLocaleString()} · 模板 v{detail.templateVersion} · 当前阶段：{stages[detail.stage]} · 重试次数：{detail.attempts || 0}</p></details>
         {detail.error && <p role="status">{detail.error}</p>}
         {detail.cleanup === 'pending' && <p role="status">{detail.state === 'completed' ? '导入完成，缓存待清理' : '缓存待清理'}</p>}
         <div className="magnet-actions">
+          {needsLogin && <button disabled={busy} onClick={() => setShowConnections(true)}>重新登录 115</button>}
           {['failed', 'attention', 'canceled'].includes(detail.state) && <button disabled={busy} onClick={() => act('retry')}>从当前阶段重试</button>}
           {!['canceled', 'completed'].includes(detail.state) && <button disabled={busy} onClick={() => act('cancel')}>取消本地执行</button>}
           {!['queued', 'running'].includes(detail.state) && <button disabled={busy} onClick={() => { if (window.confirm('清理只删除本任务缓存，保留已入库内容。未完成任务可能需要重新下载和确认计划，是否继续？')) act('clean'); }}>清理缓存</button>}

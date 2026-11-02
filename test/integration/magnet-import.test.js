@@ -15,6 +15,44 @@ import { defaultImportLimits, magnetSource, importLimits } from '../../src/share
 import { handleMagnetImportRoute } from '../../src/server/http/magnetImportRoutes.js';
 
 const magnet = `magnet:?xt=urn:btih:${'a'.repeat(40)}`;
+test('remote task name is matched by hash, persisted during wait and kept when omitted later', async t => {
+  const h = await setup(t);
+  let name = '  My download.zip  ';
+  h.adapter.call = async (_account, action) => {
+    assert.equal(action, 'tasks');
+    return [
+      { info_hash: 'b'.repeat(40), name: 'Other download', status: 1 },
+      { info_hash: 'a'.repeat(40), name, status: 1 },
+    ];
+  };
+  const run = h.create();
+  await until(() => h.repo.get(run.id).remoteStatus === '下载中');
+  assert.equal(h.service.detail(run.id).remoteName, 'My download.zip');
+  assert.equal((await h.service.status()).tasks[0].remoteName, 'My download.zip');
+  await h.service.close();
+  name = '';
+  h.repo.save({ ...h.repo.get(run.id), nextAt: 0 });
+  await h.restart();
+  await until(() => h.repo.get(run.id).nextAt > Date.now());
+  assert.equal(h.repo.get(run.id).remoteName, 'My download.zip');
+});
+
+test('blocked task queries pause without resubmission; expired login carries a recovery code', async t => {
+  for (const code of ['REMOTE_BLOCKED', 'AUTH_REQUIRED']) {
+    const h = await setup(t);
+    h.adapter.call = async (_account, action) => {
+      h.calls.push(action);
+      throw Object.assign(new Error(code === 'REMOTE_BLOCKED' ? '115 暂时拒绝接口访问' : '登录失效'), { code, statusCode: 409 });
+    };
+    const run = h.create();
+    await until(() => h.repo.get(run.id).state === 'attention');
+    const detail = h.service.detail(run.id);
+    assert.equal(detail.errorCode, code);
+    assert.equal(detail.attempts, 1);
+    assert.deepEqual(h.calls, ['tasks']);
+    assert.equal(detail.submitIntent, false);
+  }
+});
 async function until(fn) { const end = Date.now() + 10000; while (Date.now() < end) { const result = fn(); if (result) return result; await new Promise(r => setTimeout(r, 15)); } throw new Error('Timed out'); }
 async function setup(t) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'jiva-import-'));

@@ -9,6 +9,7 @@ import { apiUrl } from "./api.js";
 import { isEditableTarget } from "./shortcuts.js";
 
 const maxZoomPixelRatio = 8;
+const viewerContentSelector = "img, button, a, header, aside, [role='alert'], [role='status'], .wiki-album-zoom-tools, .wiki-album-filmstrip-dock";
 
 function Thumbnail({ item }) {
   const [failed, setFailed] = useState(false);
@@ -26,8 +27,11 @@ export default function AlbumViewer({ items, index, onIndexChange, album, onClos
   const stripRef = useRef(null);
   const zoomRef = useRef(null);
   const panRef = useRef(null);
+  const backgroundPressRef = useRef(null);
   const stageRef = useRef(null);
   const wheelAnchorRef = useRef(null);
+  const wheelNavigationRef = useRef(null);
+  wheelNavigationRef.current = { index, count: items.length, onIndexChange };
   const detailsButtonRef = useRef(null);
   const stripButtonRef = useRef(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -54,6 +58,17 @@ export default function AlbumViewer({ items, index, onIndexChange, album, onClos
   useEffect(() => {
     const stage = stageRef.current;
     function onWheel(event) {
+      if (event.target.closest(".yarl__navigation_prev, .yarl__navigation_next")) {
+        if (!event.deltaY || event.ctrlKey) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const current = wheelNavigationRef.current;
+        const next = current.index + Math.sign(event.deltaY);
+        if (next < 0 || next >= current.count) return;
+        current.index = next;
+        current.onIndexChange(next);
+        return;
+      }
       const control = zoomRef.current;
       const img = stage.querySelector(".yarl__slide_current img");
       if (!control || control.disabled || !img?.naturalWidth || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
@@ -155,6 +170,22 @@ export default function AlbumViewer({ items, index, onIndexChange, album, onClos
   }
 
   return createPortal(<dialog ref={dialogRef} tabIndex={-1} className={`wiki-album-viewer${detailsOpen ? " has-details" : ""}${stripOpen ? " has-filmstrip" : ""}`} aria-label="图集浏览" onKeyDown={onKeyDown}
+    onPointerDownCapture={(event) => {
+      backgroundPressRef.current = event.button === 0 && event.isPrimary && !event.target.closest(viewerContentSelector)
+        ? { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false } : null;
+    }}
+    onPointerMoveCapture={(event) => {
+      const press = backgroundPressRef.current;
+      if (press?.id === event.pointerId && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 5) press.moved = true;
+    }}
+    onPointerCancelCapture={() => { backgroundPressRef.current = null; }}
+    onClickCapture={(event) => {
+      const press = backgroundPressRef.current;
+      backgroundPressRef.current = null;
+      if (!event.detail || !press || press.moved || event.target.closest(viewerContentSelector)) return;
+      event.stopPropagation();
+      onClose();
+    }}
     onCancel={(event) => { event.preventDefault(); onClose(); }}>
     <div className="wiki-album-viewer-main">
       <header className="wiki-album-viewer-bar">
@@ -207,7 +238,7 @@ export default function AlbumViewer({ items, index, onIndexChange, album, onClos
             if (next <= 1) { panRef.current = null; setPanOffset({ x: 0, y: 0 }); }
           } }}
           carousel={{ finite: true, preload: 1, padding: 0, spacing: "12%" }}
-          animation={{ swipe: 260, navigation: 220, zoom: 220 }}
+          animation={{ swipe: 260, navigation: 0, zoom: 220 }}
           zoom={{ ref: zoomRef, scrollToZoom: true, maxZoomPixelRatio, wheelZoomDistanceFactor: 500 }}
           toolbar={{ buttons: [] }} controller={{ aria: false, closeOnEscape: false }}
           labels={{ Previous: "上一张", Next: "下一张", Slide: "图片", Carousel: "图片浏览", "Photo gallery": "图集", of: "/" }}

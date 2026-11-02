@@ -26,6 +26,7 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
   const [revision, setRevision] = useState(0);
   const [modal, setModal] = useState("");
   const [organizationResultId, setOrganizationResultId] = useState(null);
+  const imageNavigation = useRef(null);
   const organizationEntry = useRef(null);
   const [selectedTag, setSelectedTag] = useState(null);
   const [renaming, setRenaming] = useState(null);
@@ -72,6 +73,23 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
     const frame = requestAnimationFrame(() => window.scrollTo(0, restoreScroll));
     return () => cancelAnimationFrame(frame);
   }, [detail.data, related.data, restoreScroll, imageReady]);
+  useLayoutEffect(() => {
+    const target = imageNavigation.current;
+    if (!target || element?.kind !== "image") return;
+    function wheel(event) {
+      const button = event.target.closest("button");
+      if (!button || !target.contains(button) || !event.deltaY || event.ctrlKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (busy || externalBusy || navigation?.switching) return;
+      const change = event.deltaY > 0 ? navigation?.next : navigation?.previous;
+      if (!change) return;
+      change();
+    }
+    // Native non-passive capture also handles wheel events over disabled end buttons.
+    target.addEventListener("wheel", wheel, { passive: false, capture: true });
+    return () => target.removeEventListener("wheel", wheel, { capture: true });
+  });
   function refresh() { setRevision((n) => n + 1); onChanged(); }
   function openOrganization(resultId = null) {
     setOrganizationResultId(resultId); setModal("organization");
@@ -116,7 +134,7 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
-  const adjacentNavigation = element && navigation && <nav className={element.kind === "image" ? "wiki-image-navigation" : "wiki-detail-navigation"} aria-label="浏览相邻内容" aria-busy={navigation.switching || undefined}>
+  const adjacentNavigation = element && navigation && <nav ref={imageNavigation} className={element.kind === "image" ? "wiki-image-navigation" : "wiki-detail-navigation"} aria-label="浏览相邻内容" aria-busy={navigation.switching || undefined}>
     <button className="text-button" aria-label="上一条" title="上一条" onClick={navigation.switching ? undefined : navigation.previous} aria-disabled={navigation.switching || undefined} disabled={busy || externalBusy || !navigation.previous}><ChevronLeft size={element.kind === "image" ? 40 : 17} />{element.kind !== "image" && "上一条"}</button>
     <span className="wiki-detail-navigation-progress" role="status" aria-label={navigation.switching ? "正在切换内容" : navigation.loading ? "正在读取下一条" : undefined}>{(navigation.switching || navigation.loading) && <LoaderCircle size={16} />}</span>
     <button className="text-button" aria-label="下一条" title="下一条" onClick={navigation.switching ? undefined : navigation.next} aria-disabled={navigation.switching || undefined} disabled={busy || externalBusy || !navigation.next}>{element.kind !== "image" && "下一条"}<ChevronRight size={element.kind === "image" ? 40 : 17} /></button>

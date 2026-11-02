@@ -30,6 +30,10 @@ type input struct {
 
 func fail(code string) { fmt.Printf("{\"ok\":false,\"code\":%q}\n", code); os.Exit(1) }
 func remoteFail(err error, fallback string) {
+	var safe *remoteError
+	if errors.As(err, &safe) {
+		fail(safe.code)
+	}
 	for _, auth := range []error{driver.ErrNotLogin, driver.ErrBadCookie, driver.ErrCredentialInvalid, driver.ErrSessionExited, driver.ErrDoesLoggedOut} {
 		if errors.Is(err, auth) {
 			fail("AUTH_REQUIRED")
@@ -57,23 +61,26 @@ func main() {
 	}
 	c := driver.New(driver.UA(driver.UA115Browser)).ImportCredential(&in.Credential)
 	c.Client.SetTimeout(30 * time.Second).SetRetryCount(0)
-	user, err := c.GetUser()
-	if err != nil {
-		remoteFail(err, "IDENTITY_CHECK_FAILED")
-	}
 	var result any
 	switch in.Action {
 	case "identity":
-		result = map[string]any{"authenticated": true, "accountId": user.UserID}
+		var user driver.UserInfoResp
+		if err := readRemote(c, "GET", driver.ApiUserInfo, 0, &user); err != nil {
+			remoteFail(err, "IDENTITY_CHECK_FAILED")
+		}
+		if user.UserInfo.UserID <= 0 {
+			fail("AUTH_REQUIRED")
+		}
+		result = map[string]any{"authenticated": true, "accountId": user.UserInfo.UserID}
 	case "tasks":
 		tasks := []*driver.OfflineTask{}
 		for page := int64(1); ; page++ {
 			if page > 100 {
 				fail("TASK_PAGE_LIMIT")
 			}
-			r, e := c.ListOfflineTask(page)
+			r, e := listTasks(c, page)
 			if e != nil {
-				fail("TASK_LIST_FAILED")
+				remoteFail(e, "TASK_LIST_FAILED")
 			}
 			tasks = append(tasks, r.Tasks...)
 			if page >= r.PageCount {

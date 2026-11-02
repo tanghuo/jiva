@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowUpRight, Grid2X2, Images, MoreHorizontal, PanelTop, Play, Plus } from "lucide-react";
 import useWikiResource from "./useWikiResource.js";
 import { apiUrl, request } from "./api.js";
 import { Button } from "./ui/Button.jsx";
 import TagInput, { readTagInput } from "./TagInput.jsx";
 import { elementTags } from "../../shared/domain/elements.js";
+import { persistAlbumLayout, readStoredAlbumLayout } from "./albumLayout.js";
 
 const AlbumViewer = lazy(() => import("./AlbumViewer.jsx"));
 
@@ -12,10 +13,7 @@ export default function AlbumPage({ id, revision = 0, readOnly = false, onBack, 
   const resource = useWikiResource(`/api/albums/${id}`, revision);
   const album = resource.data?.album;
   const items = resource.data?.items || [];
-  const [view, setView] = useState(() => {
-    try { return localStorage.getItem("wikiAlbumView") === "strip" ? "strip" : "grid"; }
-    catch { return "grid"; }
-  });
+  const [layout, setLayout] = useState(readStoredAlbumLayout); // grid | strip
   const [viewerOpen, setViewerOpen] = useState(false);
   const [tileSize, setTileSize] = useState(200);
   const [stripWidth, setStripWidth] = useState(() => {
@@ -33,6 +31,9 @@ export default function AlbumPage({ id, revision = 0, readOnly = false, onBack, 
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [importSources, setImportSources] = useState([]);
+  const [stripIndex, setStripIndex] = useState(0);
+  const stripStageRef = useRef(null);
+
   useEffect(() => {
     if (['read-only', 'lan-edit'].includes(document.querySelector('meta[name="wiki-access"]')?.content)) return;
     let canceled = false;
@@ -46,11 +47,6 @@ export default function AlbumPage({ id, revision = 0, readOnly = false, onBack, 
   }, [stripWidth]);
 
   useEffect(() => {
-    try { localStorage.setItem("wikiAlbumView", view); }
-    catch { /* Keep browsing when storage is blocked. */ }
-  }, [view]);
-
-  useEffect(() => {
     if (!album) return;
     setTitle(album.album?.title || "");
     setSourceUrl(album.album?.sourceUrl || "");
@@ -59,7 +55,48 @@ export default function AlbumPage({ id, revision = 0, readOnly = false, onBack, 
 
   useEffect(() => { onBusyChange?.(busy || resource.loading); return () => onBusyChange?.(false); }, [busy, resource.loading, onBusyChange]);
 
+  useEffect(() => { persistAlbumLayout(layout); }, [layout]);
+
+  useEffect(() => {
+    if (layout !== "strip" || viewerOpen || !items.length) {
+      setStripIndex(0);
+      return undefined;
+    }
+    const stage = stripStageRef.current;
+    if (!stage) return undefined;
+    const nodes = [...stage.querySelectorAll("[data-strip-index]")];
+    if (!nodes.length) return undefined;
+    const ratios = new Map();
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const idx = Number(entry.target.getAttribute("data-strip-index"));
+        if (!Number.isFinite(idx)) continue;
+        ratios.set(idx, entry.isIntersecting ? entry.intersectionRatio : 0);
+      }
+      let best = 0;
+      let bestRatio = -1;
+      for (const [idx, ratio] of ratios) {
+        if (ratio > bestRatio) {
+          bestRatio = ratio;
+          best = idx;
+        }
+      }
+      setStripIndex(best);
+    }, { root: null, threshold: [0, 0.25, 0.5, 0.75, 1] });
+    for (const node of nodes) observer.observe(node);
+    return () => observer.disconnect();
+  }, [layout, viewerOpen, items.length, items.map((item) => item.id).join(",")]);
+
   const coverId = album?.album?.coverImageId || album?.album?.cover?.imageId;
+
+  function changeLayout(next) {
+    setLayout(next === "strip" ? "strip" : "grid");
+  }
+
+  function openViewerAt(itemIndex) {
+    setIndex(itemIndex);
+    setViewerOpen(true);
+  }
 
   async function saveMeta() {
     if (readOnly || busy) return;
@@ -138,6 +175,14 @@ export default function AlbumPage({ id, revision = 0, readOnly = false, onBack, 
 
   const meta = album.album || {};
 
+  function renderTileActions(item) {
+    if (!(managing && !readOnly)) return null;
+    return <div className="wiki-album-tile-actions">
+      <button type="button" disabled={busy} onClick={() => setCover(item.id)}>设为封面</button>
+      <button type="button" disabled={busy} onClick={() => removeItem(item.id)}>移出图集</button>
+    </div>;
+  }
+
   return <section className="wiki-album-page" data-c-surface="album">
     <header className="page-header wiki-album-header">
       <div className="page-header-row">
@@ -164,51 +209,59 @@ export default function AlbumPage({ id, revision = 0, readOnly = false, onBack, 
                 onChange={(e) => { appendFiles(e.target.files); e.target.value = ""; setMenuOpen(false); }} /></label>
             </div>}
           </div>}
-          <Button variant="primary" disabled={!items.length || busy} onClick={() => { setIndex(0); setViewerOpen(true); }}><Play size={15} />开始浏览</Button>
+          {!managing && <Button variant="primary" disabled={!items.length || busy} onClick={() => openViewerAt(0)}><Play size={15} />开始浏览</Button>}
         </div>
       </div>
     </header>
     {managing && !readOnly && <div className="wiki-album-manage-bar">
       <TagInput label="标签" value={tags} disabled={busy} onChange={setTags} />
       <label>来源链接<input value={sourceUrl} disabled={busy} onChange={(e) => setSourceUrl(e.target.value)} onBlur={saveMeta} /></label>
-      <Button disabled={busy} onClick={saveMeta}>保存标题与标签</Button>
+      <Button variant="secondary" disabled={busy} onClick={saveMeta}>保存标题与标签</Button>
     </div>}
-    {error && <p className="wiki-error" role="alert">{error}</p>}
     <div className="wiki-album-toolbar">
-      <div className="wiki-album-view-toggle ui-segmented" role="group" aria-label="网格样式">
-        <button type="button" aria-pressed={view !== "strip"} onClick={() => setView("grid")}><Grid2X2 size={15} />方格</button>
-        <button type="button" aria-pressed={view === "strip"} onClick={() => setView("strip")}><PanelTop size={15} />竖向长条</button>
+      <div className="wiki-album-view-toggle ui-segmented" role="group" aria-label="总览布局">
+        <button type="button" aria-pressed={layout === "grid"} onClick={() => changeLayout("grid")}>方格</button>
+        <button type="button" aria-pressed={layout === "strip"} aria-label="竖向长条" onClick={() => changeLayout("strip")}>长条</button>
       </div>
-      <span className="wiki-album-toolbar-count">{items.length} 张图片</span>
-      {view === "grid" && <label className="wiki-album-density"><Grid2X2 size={13} aria-hidden="true" />
+      {layout === "grid" && <label className="wiki-album-density"><Grid2X2 size={13} aria-hidden="true" />
         <input type="range" min="140" max="320" step="20" value={tileSize} onChange={(event) => setTileSize(Number(event.target.value))} aria-label="缩略图大小" />
         <Grid2X2 size={19} aria-hidden="true" />
       </label>}
-      {view === "strip" && <label className="wiki-album-density wiki-album-strip-width">
+      {layout === "strip" && <label className="wiki-album-density wiki-album-strip-width">
         <span>图片宽度</span>
         <input type="range" min="480" max="1920" step="40" value={stripWidth} onChange={(event) => setStripWidth(Number(event.target.value))} aria-label="长条图片宽度" />
         <output>{stripWidth}px</output>
       </label>}
     </div>
-    <div className={`wiki-album-grid ${view === "strip" ? "is-strip" : ""}`} style={{ "--album-tile-size": `${tileSize}px`, "--album-strip-width": `${stripWidth}px` }}>
-      {items.map((item, itemIndex) => <article key={item.id} className="wiki-album-tile">
-        <button type="button" className="wiki-album-tile-open" aria-label={`浏览第 ${itemIndex + 1} 张`} onClick={() => { setIndex(itemIndex); setViewerOpen(true); }}>
-          <img src={apiUrl(`/api/elements/${item.id}/thumbnail?width=${view === "strip" ? 1600 : 800}`)} alt={item.image?.originalName || `第 ${itemIndex + 1} 张图片`} draggable={false} loading="lazy" />
-          <span className="wiki-album-tile-number">{String(itemIndex + 1).padStart(2, "0")}</span>
-          {coverId === item.id && <span className="wiki-album-cover-badge">封面</span>}
-        </button>
-        {view !== "strip" && <div className="wiki-album-tile-caption"><span title={item.image?.originalName}>{item.image?.originalName || `图片 ${itemIndex + 1}`}</span><span>{String(itemIndex + 1).padStart(2, "0")}</span></div>}
-        {managing && !readOnly && <div className="wiki-album-tile-actions">
-          <button type="button" disabled={busy} onClick={() => setCover(item.id)}>设为封面</button>
-          <button type="button" disabled={busy} onClick={() => removeItem(item.id)}>移出图集</button>
+    {error && <p className="wiki-error" role="alert">{error}</p>}
+    <div className={`wiki-album-grid-stage${layout === "strip" ? " is-strip-stage" : ""}`} ref={layout === "strip" ? stripStageRef : undefined}>
+      <div className={`wiki-album-grid${layout === "strip" ? " is-strip" : ""}${managing ? " is-managing" : ""}`} style={{ "--album-tile-size": `${tileSize}px`, "--album-strip-width": `${stripWidth}px` }}>
+        {items.map((item, itemIndex) => <article
+          key={item.id}
+          className="wiki-album-tile"
+          data-strip-index={layout === "strip" ? itemIndex : undefined}
+        >
+          <button type="button" className="wiki-album-tile-open" aria-label={`浏览第 ${itemIndex + 1} 张`}
+            onClick={() => openViewerAt(itemIndex)}>
+            <img src={apiUrl(`/api/elements/${item.id}/thumbnail?width=${layout === "strip" ? 1600 : 800}`)} alt={item.image?.originalName || `第 ${itemIndex + 1} 张图片`} draggable={false} loading="lazy" />
+            <span className="wiki-album-tile-number">{String(itemIndex + 1).padStart(2, "0")}</span>
+            {coverId === item.id && <span className="wiki-album-cover-badge">封面</span>}
+          </button>
+          {renderTileActions(item)}
+        </article>)}
+        {!items.length && <div className="wiki-album-empty">
+          <p className="wiki-muted">这个图集还没有图片</p>
+          {!readOnly && <label className="button-sm"><Plus size={16} />添加图片
+            <input hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple disabled={busy}
+              onChange={(e) => { appendFiles(e.target.files); e.target.value = ""; }} />
+          </label>}
         </div>}
-      </article>)}
-      {!items.length && <div className="wiki-album-empty">
-        <p className="wiki-muted">这个图集还没有图片</p>
-        {!readOnly && <label className="button-sm"><Plus size={16} />添加图片
-          <input hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple disabled={busy}
-            onChange={(e) => { appendFiles(e.target.files); e.target.value = ""; }} />
-        </label>}
+      </div>
+      {layout === "strip" && items.length > 0 && <div className="wiki-album-strip-progress" aria-live="polite">
+        <span className="wiki-album-strip-progress-bar" aria-hidden="true">
+          <i style={{ width: `${Math.max(4, ((stripIndex + 1) / items.length) * 100)}%` }} />
+        </span>
+        <span className="wiki-album-strip-progress-count">{stripIndex + 1} / {items.length}</span>
       </div>}
     </div>
     {viewerOpen && items.length > 0 && <Suspense fallback={null}><AlbumViewer items={items} index={Math.min(index, items.length - 1)} onIndexChange={setIndex} album={album} onClose={() => setViewerOpen(false)} /></Suspense>}

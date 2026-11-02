@@ -29,6 +29,21 @@ async function authIdentity() {
   } catch { return {}; }
 }
 export async function readGrokQuota(config, context) {
+  // A billing auth-context failure is not proof that the cached login expired.
+  // Re-establish the official CLI's auth once; never refresh tokens ourselves or
+  // retry prompts. The caller's abort signal bounds both read-only attempts.
+  for (let attempt = 0; ; attempt++) {
+    context.signal?.throwIfAborted();
+    try { return await readGrokQuotaOnce(config, context); }
+    catch (error) {
+      context.signal?.throwIfAborted();
+      if (error.code !== -32603 || typeof error.details !== 'string'
+        || !error.details.startsWith('Billing service error:') || !error.details.includes('reason=no auth context')) throw error;
+      if (attempt) throw quotaError('GROK_BILLING_AUTH_UNAVAILABLE');
+    }
+  }
+}
+async function readGrokQuotaOnce(config, context) {
   const before = await authIdentity();
   if (before.team) throw quotaError('TEAM_UNSUPPORTED');
   const client = await startGrokAcp({ ...config,model:config.model || 'grok-4.6' }, { cwd:context.cwd,signal:context.signal,quotaOnly:true });

@@ -8,6 +8,7 @@ const messages = {
   AUTH_REQUIRED:'请先在对应官方客户端登录，再检测额度', UNSUPPORTED:'当前客户端不支持此额度接口', TEAM_UNSUPPORTED:'当前接口不支持团队额度',
   NOT_RUNNING:'请先在工作台连接 Antigravity 账号，或打开并登录桌面端', NOT_CONFIGURED:'请先配置额度来源', PROTOCOL_ERROR:'客户端返回的额度格式暂不支持',
   QUOTA_UNAVAILABLE:'Antigravity 未返回可用的 Gemini 额度，请稍后重试',
+  GROK_BILLING_AUTH_UNAVAILABLE:'Grok 额度服务未能确认认证上下文，请检查代理连接后刷新；这不代表本机登录已失效',
   AMBIGUOUS_SOURCE:'检测到多个 Antigravity 来源，无法确认当前账号', IDENTITY_CHANGED:'检测期间账号发生变化，请重试',
   TIMEOUT:'额度读取超时，请稍后重试', READ_FAILED:'额度暂时读不到，请检查本机客户端与网络',
 };

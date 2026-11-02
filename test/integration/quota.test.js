@@ -32,7 +32,50 @@ test('Grok quota authenticates headlessly before billing and does not reject sta
   assert.deepEqual(calls.map(c=>c.method),['initialize','authenticate','_x.ai/billing']);assert.equal(calls[1].params._meta.headless,true);
   await assert.rejects(readGrokQuota({executable,model:'no-auth'},{cwd:dir,signal:AbortSignal.timeout(10000),salt:'fixture'}),{code:'AUTH_REQUIRED'});
 });
+test('Grok billing auth-context failures reconnect once, while unrelated errors are not retried', {timeout:15000}, async t=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'wiki-quota-grok-recovery-'));
+  t.after(async()=>{assert.equal(path.dirname(dir),path.resolve(os.tmpdir()));assert.ok(path.basename(dir).startsWith('wiki-quota-grok-recovery-'));await rm(dir,{recursive:true,force:true});});
+  const executable=path.join(dir,'grok.mjs');
+  await writeFile(executable,`import readline from 'node:readline';import {appendFileSync,readFileSync} from 'node:fs';
+    let authenticated=false;
+    readline.createInterface({input:process.stdin}).on('line',line=>{
+      const v=JSON.parse(line);appendFileSync('calls.jsonl',JSON.stringify({method:v.method,pid:process.pid})+'\\n');
+      let result={},error;
+      if(v.method==='initialize')result={authMethods:[{id:'cached_token'}]};
+      if(v.method==='authenticate')authenticated=true;
+      if(v.method==='_x.ai/billing'){
+        const mode=readFileSync('mode','utf8'),calls=readFileSync('calls.jsonl','utf8').split('\\n').filter(l=>l.includes('_x.ai/billing')).length;
+        if(!authenticated)throw new Error('billing before auth');
+        if(mode==='recover'&&calls>1)result={config:{creditUsagePercent:13}};
+        else error={code:-32603,message:'Internal error',data:mode==='other'?'other internal error':'Billing service error: Invalid or expired credentials (reason=no auth context)'};
+      }
+      process.stdout.write(JSON.stringify({id:v.id,...(error?{error}:{result})})+'\\n');
+    });process.stdin.on('end',()=>process.exit(0));`);
+  const calls=async()=> (await readFile(path.join(dir,'calls.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+  for(const mode of ['recover','persistent','other']){
+    await writeFile(path.join(dir,'mode'),mode);await writeFile(path.join(dir,'calls.jsonl'),'');
+    const read=()=>readGrokQuota({executable},{cwd:dir,signal:AbortSignal.timeout(10000),salt:'fixture'});
+    if(mode==='recover')assert.equal((await read()).buckets[0].remainingPercent,87);
+    else await assert.rejects(read(),{code:mode==='persistent'?'GROK_BILLING_AUTH_UNAVAILABLE':-32603});
+    const log=await calls(),attempts=mode==='other'?1:2;
+    assert.deepEqual(log.map(c=>c.method),Array.from({length:attempts},()=>['initialize','authenticate','_x.ai/billing']).flat());
+    assert.equal(new Set(log.map(c=>c.pid)).size,attempts);
+  }
+  const before=await calls(),controller=new AbortController();controller.abort();
+  await assert.rejects(readGrokQuota({executable},{cwd:dir,signal:controller.signal,salt:'fixture'}),{name:'AbortError'});
+  assert.deepEqual(await calls(),before);
+});
 async function setup(t,readers,options={}){const dir=await mkdtemp(path.join(os.tmpdir(),'wiki-quota-'));const db=initDb(':memory:');const repo=createQuotaRepository(db);let time=10000000;const service=await createQuotaService({repo,dataDir:dir,executionConfig:()=>({codexCli:{}}),readers,now:()=>time,subscribe:()=>()=>{},...options});t.after(async()=>{await service.close();db.close();assert.equal(path.dirname(dir),path.resolve(os.tmpdir()));assert.ok(path.basename(dir).startsWith('wiki-quota-'));await rm(dir,{recursive:true,force:true});});return {db,repo,service,advance:n=>{time+=n;}};}
+
+test('Grok billing auth-context failures expose a specific safe message without claiming the login expired',async t=>{
+  const {service}=await setup(t,{grok:async()=>{throw Object.assign(new Error('secret upstream diagnostic'),{code:'GROK_BILLING_AUTH_UNAVAILABLE'});}});
+  const source=service.snapshot().sources.find(s=>s.provider==='grok');
+  service.refresh([source.sourceId],'manual');await settle(()=>!service.snapshot().refreshingSources.length);
+  const state=service.snapshot().sources.find(s=>s.provider==='grok');
+  assert.equal(state.state,'error');assert.equal(state.errorCode,'GROK_BILLING_AUTH_UNAVAILABLE');
+  assert.match(state.safeMessage,/检查代理连接/);assert.match(state.safeMessage,/不代表本机登录已失效/);
+  assert.equal(JSON.stringify(service.snapshot()).includes('secret upstream diagnostic'),false);
+});
 test('quota repository keeps freshness separately, deduplicates history and removes only on full snapshots',async t=>{
   const {db,repo}=await setup(t,{});const state={sourceId:'s'};const r={...result(),sourceId:'s',observedAt:1000};
   repo.success(state,r,1);const count=()=>Number(db.prepare('SELECT count(*) n FROM quota_snapshot').get().n);assert.equal(count(),1);

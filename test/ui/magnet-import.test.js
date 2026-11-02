@@ -12,6 +12,33 @@ import { createMagnetImportRepository } from '../../src/server/data/magnetImport
 import { torrentMagnet } from '../../src/server/assets/torrentMagnet.js';
 
 const browserPath = resolveBrowserPath();
+test('expired task offers login beside the error and opens the QR connection panel', { timeout: 60000, skip: !browserPath }, async t => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'magnet-login-ui-'));
+  const db = initDb(path.join(dataDir, 'library.sqlite3'));
+  const repo = createMagnetImportRepository(db), connection = repo.connect('123', 'Test 115');
+  const run = repo.create({ connectionId: connection.id, spaceId: 1, source: { original: 'magnet:test', hash: 'a'.repeat(40), magnet: 'magnet:test' } });
+  repo.save({ ...run, accountId: '123', state: 'attention', stage: 'wait', remoteName: 'My download.zip', remoteStatus: '排队中', errorCode: 'AUTH_REQUIRED', error: '115 登录失效，请用原账号重新登录' });
+  db.close();
+  let logins = 0;
+  const adapter = {
+    available: async () => true,
+    loginStart: async () => { logins++; return { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', expires: Date.now() + 240000, image: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=' }; },
+    loginPoll: async () => ({ status: 'waiting' }),
+  };
+  const app = await createServer({ port: 0, dataDir, importAdapter: adapter });
+  let browser;
+  t.after(async () => { await browser?.close(); await app.close(); await rm(dataDir, { recursive: true, force: true }); });
+  browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  const page = await browser.newPage(); await stubWorkbenchModels(page);
+  await page.goto(`${app.url}#imports?task=${run.id}`);
+  await page.getByRole('button', { name: '重新登录 115', exact: true }).click();
+  await page.getByRole('button', { name: '扫码登录 / 重新登录', exact: true }).click();
+  await page.getByAltText('使用 115 手机 App 扫码登录').waitFor();
+  assert.equal(logins, 1);
+  assert.match(await page.getByLabel('任务详情', { exact: true }).innerText(), /上次 115 状态：排队中/);
+  assert.match(await page.getByLabel('任务详情', { exact: true }).innerText(), /115 任务名：My download.zip/);
+  assert.match(await page.getByLabel('导入任务列表', { exact: true }).innerText(), /My download.zip/);
+});
 test('torrent files paste from Wiki, choose, drop and native clipboard visibly fill the magnet form', { timeout: 60000, skip: !browserPath }, async t => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'torrent-input-ui-'));
   const app = await createServer({ port: 0, dataDir });

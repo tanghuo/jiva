@@ -424,6 +424,43 @@ test("detail previous and next follow filtered pages and return directly to the 
   assert.equal(await page.getByRole("button", { name: "打开内容：不应出现在导航中的内容", exact: true }).count(), 0);
 });
 
+test("image navigation buttons turn with the wheel without scrolling", options, async (t) => {
+  const { page, app } = await setup(t);
+  for (const [name, color] of [["wheel-last.png", "#74829b"], ["wheel-middle.png", "#688f87"], ["wheel-first.png", "#a28768"]]) {
+    const bytes = await sharp({ create: { width: 480, height: 360, channels: 3, background: color } }).png().toBuffer();
+    const response = await fetch(new URL("api/images", app.url), { method: "POST", headers: { "x-file-name": name }, body: bytes });
+    assert.equal(response.status, 201);
+  }
+  await page.reload();
+  await page.getByRole("button", { name: "打开内容：wheel-first.png", exact: true }).click();
+  const detail = page.getByRole("region", { name: "内容详情", exact: true });
+  const previous = detail.getByRole("button", { name: "上一条", exact: true });
+  const next = detail.getByRole("button", { name: "下一条", exact: true });
+  const heading = (name) => detail.getByRole("heading", { name, exact: true });
+  await heading("wheel-first.png").waitFor();
+  await page.waitForFunction(() => document.querySelector(".wiki-original img")?.naturalWidth > 0);
+  assert.equal(await previous.isDisabled(), true);
+  // Down over the disabled previous button must still move forward.
+  await previous.hover({ force: true });
+  const scroll = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, 100);
+  await heading("wheel-middle.png").waitFor();
+  assert.equal(await page.evaluate(() => window.scrollY), scroll);
+  await previous.hover();
+  await page.mouse.wheel(0, 100);
+  await heading("wheel-last.png").waitFor();
+  assert.equal(await next.isDisabled(), true);
+  await page.waitForTimeout(160);
+  // Up over the disabled next button must still move backward.
+  await next.hover({ force: true });
+  await page.mouse.wheel(0, -100);
+  await heading("wheel-middle.png").waitFor();
+  await page.waitForTimeout(160);
+  await next.hover();
+  await page.mouse.wheel(0, -100);
+  await heading("wheel-first.png").waitFor();
+});
+
 test("image detail zooms gradually and allows free panning on both axes", options, async (t) => {
   const { page, app } = await setup(t);
   const bytes = await sharp({ create: { width: 480, height: 360, channels: 3, background: "#74829b" } }).png().toBuffer();
