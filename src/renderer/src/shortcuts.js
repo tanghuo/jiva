@@ -21,7 +21,7 @@ export const shortcutGroups = [
   ] },
   { title: "内容库", items: [
     [["←", "→"], "详情页切换上一条、下一条"],
-    [[modKey, "V"], "粘贴图片或视频，加入待保存内容"],
+    [[modKey, "V"], "粘贴图片、视频、文字或文件夹，预览后导入"],
     [["Esc"], "在搜索框中清空关键词"],
   ] },
   { title: "Agent 工作台", items: [

@@ -1,5 +1,5 @@
-export const elementKinds = ["text", "image", "session", "video"];
-export const elementKindLabels = { text: "文字", image: "图片", session: "会话", video: "视频" };
+export const elementKinds = ["text", "image", "session", "video", "album"];
+export const elementKindLabels = { text: "文字", image: "图片", session: "会话", video: "视频", album: "图集" };
 export const maxElementBody = 12000;
 export const maxImageBytes = 25 * 1024 * 1024;
 export const maxVideoBytes = 1024 * 1024 * 1024;
@@ -44,13 +44,14 @@ export function elementContent(payload, previous = { body: "", kind: "text" }) {
   if (payload.body === null) throw elementError("内容必须是文字");
   if (previous.kind === "image" && body !== "") throw elementError("图片说明请保存为关联文字");
   if (previous.kind === "video" && body !== "") throw elementError("视频说明请保存为关联文字");
+  if (previous.kind === "album" && body !== "") throw elementError("图集说明请保存在图集标题与来源中");
   if (previous.kind === "session" && body !== previous.body) throw elementError("会话内容在 Agent 中查看，可编辑标签或添加关联");
   if (previous.kind === "text" && !body.trim()) throw elementError("请填写文字");
   return { body, tags: elementTags(payload.tags === undefined ? previous.tags || [] : payload.tags, { existing: previous.tags || [] }) };
 }
 
 export function elementLabel(element) {
-  return (element.body || element.summary || "").slice(0, 60) || element.image?.originalName || element.video?.originalName || elementKindLabels[element.kind] || "内容";
+  return (element.album?.title || element.body || element.summary || "").slice(0, 60) || element.image?.originalName || element.video?.originalName || elementKindLabels[element.kind] || "内容";
 }
 
 export function relationLabel(relation, elementId) {

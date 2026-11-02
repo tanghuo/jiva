@@ -3,6 +3,8 @@ import { Settings, History } from "lucide-react";
 import KeyboardShortcuts from "./KeyboardShortcuts.jsx";
 import { isEditableTarget, overlayOpen } from "./shortcuts.js";
 import WikiApp from "./WikiApp.jsx";
+import AlbumImportStatus from "./AlbumImportStatus.jsx";
+import MagnetImportStatus from './MagnetImportStatus.jsx';
 import SettingsDialog from "./SettingsDialog.jsx";
 import LiquidGlassController from "./LiquidGlassController.jsx";
 import WikiSidebar from "./WikiSidebar.jsx";
@@ -32,12 +34,14 @@ const readOnly = access === "read-only";
 // LAN visitors never get the agent, settings or other local-only tools.
 const lanGuest = readOnly || access === "lan-edit";
 const WorkflowApp = lazy(() => import('./features/workflow/WorkflowApp.jsx'));
+const MagnetImports = lazy(() => import('./MagnetImports.jsx'));
 const AgentWorkbench = lazy(() => import('./features/agentWorkbench/AgentWorkbench.jsx'));
 const AionuiExperiment = lazy(() => import('./features/aionui/AionuiExperiment.jsx'));
 // Local launches open the workbench; explicit links and LAN access keep their destinations.
 const currentSection = () => {
   if ((window.location.hash || "").startsWith("#shares")) return "shares";
   if (lanGuest) return "wiki";
+  if ((window.location.hash || '').startsWith('#imports')) return 'imports';
   if ((window.location.hash || '').startsWith('#aionui')) return 'aionui';
   if ((window.location.hash || '').startsWith('#workflow')) return 'workflow';
   if ((window.location.hash || '').startsWith('#workbench')) return 'workbench';
@@ -286,6 +290,7 @@ export default function App() {
         onAddReference={lanGuest ? undefined : addReference} onAskAgent={lanGuest ? undefined : askAgent} externalRevision={wikiRevision} onChanged={refreshWiki} openRequest={openRequest} spaceProps={spaceProps} spaceSwitching={spaceSwitching} />
     </Activity>}
     {section === "shares" && <div className="wiki-shell"><WikiSidebar activeTab="shares" readOnly={lanGuest} onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = "wiki"; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><TemporaryShares local={!lanGuest} /></div>}
+    {section === 'imports' && !lanGuest && <div className="wiki-shell"><WikiSidebar activeTab="imports" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="磁力导入"><Suspense fallback={<p role="status">正在打开导入任务…</p>}><MagnetImports spaces={spaces} currentSpaceId={currentSpaceId} onOpen={browseSource} onChanged={refreshWiki} /></Suspense></PageErrorBoundary></div>}
     {visited.has('workflow') && !lanGuest && <Activity mode={section === 'workflow' ? 'visible' : 'hidden'}><div className="wiki-shell"><WikiSidebar activeTab="workflow" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="工作流"><Suspense fallback={<p role="status">正在打开工作流…</p>}><WorkflowApp /></Suspense></PageErrorBoundary></div></Activity>}
     {visited.has('workbench') && !lanGuest && <Activity mode={section === 'workbench' ? 'visible' : 'hidden'}><div className="wiki-shell workbench-shell"><WikiSidebar activeTab="workbench" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="工作台"><Suspense fallback={<p role="status">正在打开工作台…</p>}><AgentWorkbench onOpen={browseSource} /></Suspense></PageErrorBoundary></div></Activity>}
     {visited.has('aionui') && !lanGuest && <Activity mode={section === 'aionui' ? 'visible' : 'hidden'}><div className="wiki-shell aionui-experiment-shell"><WikiSidebar activeTab="aionui" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="实验入口"><Suspense fallback={<p role="status">正在打开实验入口…</p>}><AionuiExperiment active={section === 'aionui'} occluded={settingsOpen || shortcutsOpen || usageOpen || organizationOpen || sourcePreview !== null} /></Suspense></PageErrorBoundary></div></Activity>}
@@ -296,6 +301,8 @@ export default function App() {
       onOpen={openSource} onStart={startReferenceChat} />}
     {sourcePreview !== null && <AgentSourcePreview key={sourcePreview} id={sourcePreview} onClose={() => setSourcePreview(null)} onBrowse={browseSource} onReference={(element) => { selectForAgent(element); setSourcePreview(null); }} onAddReference={(element) => { addReference(element); setSourcePreview(null); }} />}
     <LiquidGlassController enabled={liquidGlass} atmosphere={atmosphere} />
+    {!readOnly && <AlbumImportStatus onChanged={refreshWiki} />}
+    {!lanGuest && <MagnetImportStatus hidden={section === 'imports' || settingsOpen} onChanged={refreshWiki} />}
     {!lanGuest && quotaPreferences.enabled && <QuotaFloat quota={quota} position={quotaPreferences.position} hidden={section==='aionui' || settingsOpen} />}
     {settingsOpen && !lanGuest && <SettingsDialog key={settingsSection} initialSection={settingsSection} theme={theme} onThemeChange={setTheme} atmosphere={atmosphere} onAtmosphereChange={setAtmosphere} liquidGlass={liquidGlass} onLiquidGlassChange={setLiquidGlass} cardTagDisplay={cardTagDisplay} onCardTagDisplayChange={setCardTagDisplay} onChanged={refreshWiki} onClose={() => setSettingsOpen(false)} />}
     {shortcutsOpen && <KeyboardShortcuts onClose={() => setShortcutsOpen(false)} />}

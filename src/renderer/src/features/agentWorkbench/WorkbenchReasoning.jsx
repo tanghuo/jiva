@@ -1,13 +1,10 @@
-import { useState } from 'react';
-import { ChevronRight } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import WorkbenchMarkdown from './WorkbenchMarkdown.jsx';
 
 export default function WorkbenchReasoning({ item, live }) {
-  const [expanded, setExpanded] = useState(null);
-  return <details className="workbench-reasoning" open={expanded ?? live} onToggle={event => {
-    if (event.target === event.currentTarget && event.currentTarget.open !== (expanded ?? live)) setExpanded(event.currentTarget.open);
-  }}>
-    <summary><ChevronRight size={14} /><span>{item.data.kind === 'summary' ? '思考摘要' : '思考过程'}</span>{live && <span role="status">正在思考</span>}</summary>
-    <div className="workbench-markdown"><ReactMarkdown skipHtml components={{ a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer">{children}</a> }}>{item.data.text}</ReactMarkdown></div>
+  const label = item.data.kind === 'summary' ? '思考摘要' : '思考过程';
+  const preview = item.data.text.replace(/[*#`>_]/g, '').replace(/\s+/g, ' ').trim();
+  return <details className="workbench-reasoning" aria-label={label}>
+    <summary><span>{live ? '正在思考' : label}</span><span className="workbench-reasoning-preview">{preview}</span></summary>
+    <WorkbenchMarkdown>{item.data.text}</WorkbenchMarkdown>
   </details>;
 }

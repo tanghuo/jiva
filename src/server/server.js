@@ -1,6 +1,6 @@
 import { cleanupRetiredChat } from './assets/retiredChatCleanup.js';
 import { createServer as createHttpServer } from "node:http";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -38,6 +38,11 @@ import { createAgentCommandStore } from './assets/agentCommandStore.js';
 import { createAgentTaskService } from './application/agentTasks/service.js';
 import { createAgentTools } from './application/agentTools/service.js';
 import { createAionuiExperiment } from './application/aionuiExperiment.js';
+import { createMagnetImportRepository } from './data/magnetImportRepository.js';
+import { createMagnetImportService } from './application/magnetImportService.js';
+import { createMagnetImportStore } from './assets/magnetImportStore.js';
+import { create115Adapter } from './adapters/pan115.js';
+import { importLimits as validateImportLimits } from '../shared/domain/magnetImport.js';
 
 const projectRoot = path.resolve(import.meta.dirname, "../..");
 // Fetch Standard port blocking: https://fetch.spec.whatwg.org/#port-blocking
@@ -57,12 +62,19 @@ export async function createServer(options = {}) {
   const dataDir = path.resolve(options.dataDir || path.join(projectRoot, "data"));
   await mkdir(dataDir, { recursive: true });
   const dbPath = path.join(dataDir, "library.sqlite3");
+  let storedImportLimits = {};
+  try { storedImportLimits = JSON.parse(await readFile(path.join(dataDir, 'magnet-import-limits.json'), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw new Error('磁力导入限制配置读取失败'); }
+  const importLimits = validateImportLimits({ ...storedImportLimits, ...options.importLimits });
   const db = initDb(dbPath);
   try { await cleanupRetiredChat(dataDir); } catch (error) { db.close(); throw error; }
   const vectorQueries = createVectorQueries(db, dbPath);
   const imageStore = createImageStore(path.join(dataDir, "assets"));
   const wikiRepo = createElementRepository(db);
   const wiki = createElementService(wikiRepo, imageStore, createVideoStore(path.join(dataDir, "assets", "videos")));
+  const importAdapter = options.importAdapter || create115Adapter({ dataDir });
+  const magnetImports = createMagnetImportService({ repo: createMagnetImportRepository(db), wiki, adapter: importAdapter,
+    store: createMagnetImportStore({ dataDir, adapter: importAdapter, inspect: imageStore.inspect, limits: importLimits }), limits: importLimits });
   try { await wiki.prepareImages(); }
   catch (error) { db.close(); throw error; }
   const rendererDist = path.join(projectRoot, "dist/renderer");
@@ -100,6 +112,7 @@ export async function createServer(options = {}) {
   const aionuiExperiment = createAionuiExperiment({ root: projectRoot, dataDir });
   const quota = await createQuotaService({repo:createQuotaRepository(db),dataDir,executionConfig:()=>organization.executionConfig(),...(options.quotaReaders ? {readers:options.quotaReaders} : {})});
   const services = {
+    magnetImports,
     quota,
     aionuiExperiment,
     authentication,
@@ -142,6 +155,7 @@ export async function createServer(options = {}) {
     }
     if (browserBlockedPorts.has(actualPort)) throw new Error("Unable to allocate a browser-accessible port after 10 attempts");
   } catch (error) {
+    await magnetImports.close();
     await quota.close();
     await agentWorkbench.close();
     await agentTasks.close();
@@ -166,6 +180,7 @@ export async function createServer(options = {}) {
     get credentialFile() { return credentialsPath; },
     close() {
       closing ||= (async () => {
+        await magnetImports.close();
         await quota.close();
         await aionuiExperiment.close().catch(error => console.error('AionUi shutdown was not confirmed:', error.message));
         await agentWorkbench.close();
@@ -195,6 +210,7 @@ export async function createServer(options = {}) {
     organization.initialize({ url: instance.url, instanceId: instance.instanceId });
     videoAnalysis.start();
     workflow.start();
+    magnetImports.start();
     wiki.startPreviews().catch((error) => console.error("[jiva] preview warming failed:", error?.stack || error));
     if (sharing.status().autoStart) await sharing.setEnabled(true).catch(() => {});
   } catch (error) { await app.close(); throw error; }

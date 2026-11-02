@@ -12,13 +12,15 @@ async function until(predicate) {
   for (let i = 0; i < 400; i++) { const result = predicate(); if (result) return result; await new Promise(resolve => setTimeout(resolve, 10)); }
   throw new Error('Policy condition timed out');
 }
-async function fixture(t, prompt, { verified = true } = {}) {
+async function fixture(t, prompt, { verified = true, liveMode = true, modeError, opening } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-policy-'));
   const db = initDb(':memory:'), repo = createAgentWorkbenchRepository(db), opened = [];
   await mkdir(path.join(root, 'data'));
   const service = await createAgentWorkbenchService({ repo, dataDir: path.join(root, 'data'), initiallyEnabled: true, codexVerified: true, executionConfig: () => ({}), async openEngine(_settings, callbacks) {
     opened.push(callbacks.approvalMode);
-    return { sessionId: 'synthetic', version: 'test', capabilities: { verified, approvalMode: callbacks.approvalMode }, cancel() {}, async close() {}, async prompt(text, delivery) { delivery('attempted'); await prompt(callbacks, text); return { stopReason: 'end_turn' }; } };
+    await opening;
+    const capabilities = { verified, approvalMode: callbacks.approvalMode };
+    return { ...(callbacks.engine === 'antigravity-acp' && liveMode && { async setApprovalMode(mode) { if (modeError) throw modeError; capabilities.approvalMode = mode; } }), sessionId: 'synthetic', version: 'test', capabilities, cancel() {}, async close() {}, async prompt(text, delivery) { delivery('attempted'); await prompt(callbacks, text); return { stopReason: 'end_turn' }; } };
   } });
   t.after(async () => { await service.close(); db.close(); assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-workbench-policy-')); await rm(root, { recursive: true, force: true, maxRetries: 3 }); });
   const workspace = await service.workspace({ kind: 'scratch', trusted: true });
@@ -57,10 +59,9 @@ test('Antigravity auto approves known project reads, audits decisions, and still
   await f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: 'ask' });
   const manual = f.service.submit(session.id, { text: 'git status', requestKey: 'antigravity-manual-command' });
   const approval = await until(() => f.service.detail(session.id).approvals[0]);
-  // Changing the picker while waiting must not approve this round retroactively.
-  await f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: 'auto' });
-  assert.equal(f.repo.turn(manual.id).state, 'awaiting_approval');
-  decide(f.service, approval);
+  const changed = await f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: 'auto' });
+  assert.equal(changed.approvalUpdate.status, 'applied');
+  assert.equal(f.repo.approval(approval.id).state, 'approved');
   await until(() => f.repo.turn(manual.id).state === 'completed');
   const next = f.service.submit(session.id, { text: 'git status', requestKey: 'antigravity-auto-next-round' });
   await until(() => f.repo.turn(next.id).state === 'completed');
@@ -104,7 +105,7 @@ test('Grok maps unified modes and keeps restricted sessions out of bypass/auto',
   assert.throws(() => grokApprovalPolicy('typo'), { code: 'INVALID_POLICY' });
 });
 
-test('manual mode defers Grok permission and asks only for the actual write; approval mode changes during a turn and applies next turn', async t => {
+test('Grok switching into Auto without a native classifier keeps this round manual and enables Auto next round', async t => {
   const f = await fixture(t, async callbacks => {
     assert.equal((await permission(callbacks)).outcome.optionId, 'yes');
     await callbacks.onRequest('fs/write_text_file', { path: path.join(callbacks.cwd, 'result.txt'), content: 'approved' });
@@ -117,6 +118,8 @@ test('manual mode defers Grok permission and asks only for the actual write; app
   const live = f.repo.session(session.id);
   const changed = await f.service.policy(session.id, { revision: live.revision, approvalMode: 'auto' });
   assert.equal(changed.policy.approvalMode, 'auto');
+  assert.equal(changed.approvalUpdate.status, 'partial');
+  assert.equal(changed.approvalUpdate.mode, 'ask');
   assert.equal(changed.policy.write, live.policy.write);
   assert.equal(changed.revision, live.revision);
   assert.equal(f.repo.approval(approval.id).state, 'pending');
@@ -173,17 +176,20 @@ test('Auto asks once when Grok requests a decision; rejection prevents execution
   assert.equal(f.repo.events(session.id, 0).filter(event => event.type === 'approval.requested').length, 2);
 });
 
-test('Codex approval mode can change during a turn and the next turn receives it', async t => {
-  const f = await fixture(t, async () => {});
+test('Codex releases pending and subsequent native approvals immediately, with explicit native policy limits', async t => {
+  const f = await fixture(t, async callbacks => {
+    for (let i = 0; i < 2; i++) assert.equal(await callbacks.onRequest('engine/native_approval', { kind: 'native.command', cwd: callbacks.cwd, command: 'git status' }), true);
+  });
   const session = f.service.createSession({ engine: 'codex-cli', workspaceId: f.workspace.id, nativeReadAccepted: true, model: 'test' });
-  assert.equal(session.policy.approvalMode, 'ask');
   const turn = f.service.submit(session.id, { text: 'first', requestKey: 'codex-mode-first' });
-  await until(() => f.repo.turn(turn.id).state === 'running' || f.repo.turn(turn.id).state === 'completed');
-  const live = f.repo.session(session.id);
-  const changed = await f.service.policy(session.id, { revision: live.revision, approvalMode: 'allow' });
-  assert.equal(changed.policy.approvalMode, 'allow');
+  const approval = await until(() => f.service.detail(session.id).approvals[0]);
+  const changed = await f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: 'allow' });
+  assert.equal(changed.approvalUpdate.status, 'partial');
+  assert.equal(changed.approvalUpdate.mode, 'allow');
+  assert.equal(f.repo.approval(approval.id).state, 'approved');
   await until(() => f.repo.turn(turn.id).state === 'completed');
   assert.deepEqual(f.opened, ['ask']);
+  assert.equal(f.repo.events(session.id, 0).filter(event => event.type === 'approval.requested').length, 1);
   const next = f.service.submit(session.id, { text: 'second', requestKey: 'codex-mode-second' });
   await until(() => f.repo.turn(next.id).state === 'completed');
   assert.deepEqual(f.opened, ['ask', 'allow']);
@@ -204,4 +210,126 @@ test('unverified engines cannot enable automatic execution; unknown modes and un
   assert.equal(dispatched, false);
   const restricted = f.repo.createSession({ workspaceId: f.workspace.id, engine: 'grok-build', purpose: 'workflow', policy: { write: 'ask', readRoots: [] }, data: {} });
   await assert.rejects(f.service.policy(restricted.id, { revision: restricted.revision, approvalMode: 'allow' }), { code: 'TOOL_DENIED' });
+});
+
+test('Grok switches Ask/Allow in both directions without replaying the prompt', async t => {
+  const firstWrite = Promise.withResolvers(), nextWrite = Promise.withResolvers();
+  const f = await fixture(t, async callbacks => {
+    for (const [index, gate] of [null, nextWrite.promise].entries()) {
+      if (gate) await gate;
+      assert.equal((await permission(callbacks)).outcome.optionId, 'yes');
+      await callbacks.onRequest('fs/write_text_file', { path: path.join(callbacks.cwd, `result-${index}.txt`), content: 'ok' });
+      if (!index) firstWrite.resolve();
+    }
+  });
+  const session = f.service.createSession({ engine: 'grok-build', workspaceId: f.workspace.id });
+  const turn = f.service.submit(session.id, { text: 'two writes', requestKey: 'grok-live-modes' });
+  const pending = await until(() => f.service.detail(session.id).approvals[0]);
+  const change = mode => f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: mode });
+  assert.equal((await change('allow')).approvalUpdate.status, 'applied');
+  await firstWrite.promise;
+  assert.equal(f.repo.approval(pending.id).state, 'approved');
+  assert.equal((await change('ask')).approvalUpdate.mode, 'ask');
+  nextWrite.resolve();
+  const second = await until(() => f.service.detail(session.id).approvals[0]);
+  assert.equal(second.operation.kind, 'file.write');
+  await assert.rejects(readFile(path.join(f.workspace.path, 'result-1.txt')), { code: 'ENOENT' });
+  // Two simultaneous updates are serialized; the last requested mode wins.
+  await Promise.all([change('allow'), change('ask')]);
+  await until(() => f.repo.turn(turn.id).state === 'completed');
+  assert.equal(f.repo.session(session.id).policy.approvalMode, 'ask');
+  assert.deepEqual(f.opened, ['ask']);
+  assert.equal(await readFile(path.join(f.workspace.path, 'result-1.txt'), 'utf8'), 'ok');
+});
+
+test('Grok switching out of native Auto uses the current host policy for permission callbacks and writes', async t => {
+  const proceed = Promise.withResolvers();
+  const f = await fixture(t, async callbacks => {
+    await proceed.promise;
+    assert.equal((await permission(callbacks)).outcome.optionId, 'yes');
+    await callbacks.onRequest('fs/write_text_file', { path: path.join(callbacks.cwd, 'result.txt'), content: 'ask' });
+  });
+  const session = f.service.createSession({ engine: 'grok-build', workspaceId: f.workspace.id, approvalMode: 'auto' });
+  const turn = f.service.submit(session.id, { text: 'wait', requestKey: 'auto-to-ask' });
+  await until(() => f.repo.session(session.id).engineSessionId);
+  await f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: 'ask' });
+  proceed.resolve();
+  const pending = await until(() => f.service.detail(session.id).approvals[0]);
+  assert.equal(pending.operation.kind, 'file.write');
+  decide(f.service, pending);
+  await until(() => f.repo.turn(turn.id).state === 'completed');
+});
+
+test('a mode selected while the engine is opening is reconciled before dispatch', async t => {
+  const opening = Promise.withResolvers();
+  const f = await fixture(t, async callbacks => {
+    await callbacks.onRequest('fs/write_text_file', { path: path.join(callbacks.cwd, 'result.txt'), content: 'ok' });
+  }, { opening: opening.promise });
+  const session = f.service.createSession({ engine: 'grok-build', workspaceId: f.workspace.id });
+  const turn = f.service.submit(session.id, { text: 'write', requestKey: 'opening-mode-change' });
+  await until(() => f.opened.length);
+  assert.equal((await f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: 'allow' })).approvalUpdate.status, 'pending');
+  opening.resolve();
+  await until(() => f.repo.turn(turn.id).state === 'completed');
+  assert.equal(f.service.detail(session.id).approvals.length, 0);
+  assert.deepEqual(f.opened, ['ask']);
+});
+
+test('unsupported Antigravity live changes stay pending with an explicit next-round status', async t => {
+  const f = await fixture(t, async callbacks => callbacks.onRequest('engine/antigravity_approval', { toolCall: { toolCallId: 'command', kind: 'execute' } }), { modeError: Object.assign(new Error('Unsupported method'), { code: 'ACP_ERROR', rpcCode: -32601 }) });
+  const session = f.service.createSession({ engine: 'antigravity-acp', workspaceId: f.workspace.id, nativeReadAccepted: true, model: 'fixture-model' });
+  const turn = f.service.submit(session.id, { text: 'command', requestKey: 'unsupported-live' });
+  const pending = await until(() => f.service.detail(session.id).approvals[0]);
+  const changed = await f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: 'allow' });
+  assert.equal(changed.approvalUpdate.status, 'deferred');
+  assert.equal(f.repo.approval(pending.id).state, 'pending');
+  await f.service.cancel(turn.id);
+  assert.notEqual(f.repo.approval(pending.id).state, 'approved');
+  assert.equal(f.service.detail(session.id).approvals.length, 0);
+});
+
+test('switching native Grok Auto to Ask moves a waiting permission decision to the mandatory write gateway', async t => {
+  const f = await fixture(t, async callbacks => {
+    if ((await permission(callbacks)).outcome.optionId !== 'yes') return;
+    await callbacks.onRequest('fs/write_text_file', { path: path.join(callbacks.cwd, 'result.txt'), content: 'ok' });
+  });
+  const session = f.service.createSession({ engine: 'grok-build', workspaceId: f.workspace.id, approvalMode: 'auto' });
+  const turn = f.service.submit(session.id, { text: 'write', requestKey: 'waiting-auto-to-ask' });
+  const first = await until(() => f.service.detail(session.id).approvals[0]);
+  assert.equal(first.operation.kind, 'engine.permission');
+  await f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: 'ask' });
+  const actualWrite = await until(() => f.service.detail(session.id).approvals.find(item => item.operation.kind === 'file.write'));
+  assert.equal(f.repo.approval(first.id).state, 'approved');
+  await assert.rejects(readFile(path.join(f.workspace.path, 'result.txt')), { code: 'ENOENT' });
+  decide(f.service, actualWrite, 'reject');
+  await until(() => ['failed', 'unknown'].includes(f.repo.turn(turn.id).state));
+  await assert.rejects(readFile(path.join(f.workspace.path, 'result.txt')), { code: 'ENOENT' });
+});
+
+test('Codex cannot claim stricter native permissions applied when the turn started in Allow', async t => {
+  const proceed = Promise.withResolvers();
+  const f = await fixture(t, async () => { await proceed.promise; });
+  const session = f.service.createSession({ engine: 'codex-cli', workspaceId: f.workspace.id, nativeReadAccepted: true, model: 'test', approvalMode: 'allow' });
+  const turn = f.service.submit(session.id, { text: 'wait', requestKey: 'codex-tighten-live' });
+  await until(() => f.repo.session(session.id).engineSessionId);
+  const changed = await f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: 'ask' });
+  assert.equal(changed.approvalUpdate.status, 'deferred');
+  assert.equal(changed.approvalUpdate.mode, 'allow');
+  assert.equal(changed.policy.approvalMode, 'ask');
+  proceed.resolve();
+  await until(() => f.repo.turn(turn.id).state === 'completed');
+});
+
+test('ambiguous Antigravity mode failure stops the turn and revokes its pending operation', async t => {
+  let executed = false;
+  const f = await fixture(t, async callbacks => {
+    executed = await callbacks.onRequest('engine/antigravity_approval', { toolCall: { toolCallId: 'write', kind: 'edit' } });
+  }, { modeError: new Error('Mode confirmation mismatch') });
+  const session = f.service.createSession({ engine: 'antigravity-acp', workspaceId: f.workspace.id, nativeReadAccepted: true, model: 'fixture-model' });
+  const turn = f.service.submit(session.id, { text: 'write', requestKey: 'ambiguous-live-change' });
+  const pending = await until(() => f.service.detail(session.id).approvals[0]);
+  await assert.rejects(f.service.policy(session.id, { revision: f.repo.session(session.id).revision, approvalMode: 'allow' }), /confirmation mismatch/);
+  await until(() => f.repo.turn(turn.id).state === 'cancelled');
+  assert.equal(executed, false);
+  assert.notEqual(f.repo.approval(pending.id).state, 'approved');
 });

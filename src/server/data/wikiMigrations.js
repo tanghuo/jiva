@@ -1,5 +1,7 @@
 import { migrateQuota } from './quotaMigration.js';
 import { migrateSpaces } from './spaceMigration.js';
+import { migrateAlbums } from './albumMigration.js';
+import { migrateMagnetImport } from './magnetImportMigration.js';
 import { migrateRetireChat } from './retireChatMigration.js';
 import { migrateWorkflow } from "./workflowMigration.js";
 import { migrateAgentWorkbench } from './agentWorkbenchMigration.js';
@@ -216,6 +218,8 @@ export const wikiMigrations = [
   { versions: [46], run: migrateRetireChat },
   { versions: [47], run: migrateQuota },
   { versions: [48], run: migrateSpaces },
+  { versions: [49], run: migrateAlbums },
+  { versions: [50], run: migrateMagnetImport },
 ];
 const knownVersions = new Set(wikiMigrations.flatMap((step) => step.versions));
 export const latestWikiVersion = Math.max(...knownVersions);

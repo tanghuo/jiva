@@ -1,0 +1,42 @@
+.workbench-markdown { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.workbench-markdown > :first-child { margin-top: 0; }
+.workbench-markdown > :last-child { margin-bottom: 0; }
+.workbench-markdown p { margin: 12px 0; }
+.workbench-markdown :is(ul, ol) { padding-left: 24px; }
+.workbench-markdown li { margin: 5px 0; }
+.workbench-markdown a { color: var(--workbench-link); text-decoration: underline; }
+.workbench-markdown code { padding: 2px 5px; background: var(--bg); border-radius: 4px; font-size: .9em; }
+.workbench-markdown pre code { padding: 0; background: transparent; }
+.workbench-markdown blockquote { margin: 16px 0; border-left: 3px solid var(--line); padding-left: 16px; color: var(--muted); }
+.workbench-markdown img { border-radius: 12px; }
+.workbench-markdown :is(h1, h2, h3, h4, h5, h6) { margin: 24px 0 10px; line-height: 1.4; font-weight: 600; }
+.workbench-markdown h1 { font-size: 1.6em; }
+.workbench-markdown h2 { font-size: 1.35em; }
+.workbench-markdown h3 { font-size: 1.15em; }
+.workbench-markdown :is(h4, h5, h6) { font-size: 1em; }
+.workbench-markdown hr { margin: 24px 0; border: 0; border-top: 1px solid var(--line); }
+.workbench-markdown :is(ul, ol) :is(ul, ol) { margin-block: 4px; }
+.workbench-markdown .contains-task-list { list-style: none; padding-left: 4px; }
+.workbench-markdown .task-list-item > input { margin-right: 8px; accent-color: var(--workbench-link); }
+.workbench-markdown-table { max-width: 100%; overflow-x: auto; margin: 16px 0; border: 1px solid var(--line); border-radius: 8px; }
+.workbench-markdown-table table { width: 100%; border-collapse: collapse; font-size: .93em; }
+.workbench-markdown-table :is(th, td) { min-width: 110px; padding: 9px 12px; border: 1px solid var(--line); vertical-align: top; text-align: left; }
+.workbench-markdown-table th { font-weight: 600; background: var(--bg); }
+.workbench-markdown-table tr:nth-child(even) { background: var(--hover); }
+.workbench-page .workbench-markdown pre { max-width: 100%; white-space: pre; overflow-wrap: normal; overflow: auto; tab-size: 4; line-height: 1.6; }
+.workbench-markdown pre code { white-space: inherit; overflow-wrap: normal; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.workbench-markdown :is(img, video) { max-width: 100%; height: auto; }
+.workbench-markdown details { margin: 12px 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; }
+.workbench-markdown summary { cursor: pointer; font-weight: 500; }
+.workbench-markdown kbd { padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; font-size: .85em; }
+.workbench-markdown .footnotes { margin-top: 24px; border-top: 1px solid var(--line); font-size: .85em; color: var(--muted); }
+.workbench-markdown .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.workbench-markdown .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding-block: 4px; }
+.workbench-markdown .katex { font-size: 1.1em; }
+.workbench-markdown .hljs { color: var(--ink); }
+.workbench-markdown :is(.hljs-comment, .hljs-quote) { color: var(--muted); font-style: italic; }
+.workbench-markdown :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal) { color: var(--accent); font-weight: 600; }
+.workbench-markdown :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: var(--good); }
+.workbench-markdown :is(.hljs-title, .hljs-function, .hljs-section) { color: var(--workbench-link); }
+.workbench-markdown :is(.hljs-number, .hljs-attr, .hljs-built_in, .hljs-symbol) { color: var(--warn); }
+.workbench-markdown :is(.hljs-deletion, .katex-error) { color: var(--bad); }

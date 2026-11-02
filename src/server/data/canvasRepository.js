@@ -3,20 +3,27 @@ import { relationDirection } from "./relationDirection.js";
 import { elementError } from "../../shared/domain/elements.js";
 import { maxCanvasNodes, maxCanvasEdges } from "../../shared/domain/canvas.js";
 
-const kindNames = { 1: "text", 2: "image", 3: "session", 5: "video" };
+const kindNames = { 1: "text", 2: "image", 3: "session", 5: "video", 6: "album" };
 
 export function createCanvasRepository(db, { publicOnly = false } = {}) {
   const vocabulary = createVocabularyRepository(db);
   const hasSpaces = db.prepare("PRAGMA table_info(elements)").all().some((column) => column.name === "space_id");
+  const hasAlbums = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='album_items'").get());
   function matching(q, tag, spaceId) {
     const clauses = ["e.deleted_at IS NULL"];
+    if (hasAlbums) clauses.push("e.id NOT IN (SELECT image_id FROM album_items)");
     if (publicOnly) clauses.push("e.local_only=0");
     const values = [];
     if (hasSpaces && spaceId != null) { clauses.push("e.space_id=?"); values.push(spaceId); }
     if (q) {
-      clauses.push("(e.body LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM element_images image WHERE image.element_id = e.id AND image.original_name LIKE ? ESCAPE '\\') OR EXISTS (SELECT 1 FROM element_videos video WHERE video.element_id=e.id AND video.original_name LIKE ? ESCAPE '\\') OR EXISTS (SELECT 1 FROM canonical_element_tags et JOIN resolved_tags c ON c.canonical_id=et.tag_id JOIN tags t ON t.id=c.id WHERE et.element_id=e.id AND t.name LIKE ? ESCAPE '\\'))");
       const search = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
-      values.push(search, search, search, search);
+      if (hasAlbums) {
+        clauses.push("(e.body LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM element_images image WHERE image.element_id = e.id AND image.original_name LIKE ? ESCAPE '\\') OR EXISTS (SELECT 1 FROM element_videos video WHERE video.element_id=e.id AND video.original_name LIKE ? ESCAPE '\\') OR EXISTS (SELECT 1 FROM album_meta am WHERE am.element_id=e.id AND am.title LIKE ? ESCAPE '\\') OR EXISTS (SELECT 1 FROM canonical_element_tags et JOIN resolved_tags c ON c.canonical_id=et.tag_id JOIN tags t ON t.id=c.id WHERE et.element_id=e.id AND t.name LIKE ? ESCAPE '\\'))");
+        values.push(search, search, search, search, search);
+      } else {
+        clauses.push("(e.body LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM element_images image WHERE image.element_id = e.id AND image.original_name LIKE ? ESCAPE '\\') OR EXISTS (SELECT 1 FROM element_videos video WHERE video.element_id=e.id AND video.original_name LIKE ? ESCAPE '\\') OR EXISTS (SELECT 1 FROM canonical_element_tags et JOIN resolved_tags c ON c.canonical_id=et.tag_id JOIN tags t ON t.id=c.id WHERE et.element_id=e.id AND t.name LIKE ? ESCAPE '\\'))");
+        values.push(search, search, search, search);
+      }
     }
     if (tag) {
       clauses.push("EXISTS (SELECT 1 FROM canonical_element_tags et JOIN tags t ON t.id=et.tag_id WHERE et.element_id=e.id AND t.normalized_name=?)");
@@ -71,6 +78,7 @@ export function createCanvasRepository(db, { publicOnly = false } = {}) {
       id: item.id, kind: kindNames[item.kind], summary: item.summary,
       ...(item.kind === 2 ? { image: { originalName: item.originalName }, thumbnailUrl: `/api/elements/${item.id}/thumbnail` } : {}),
       ...(item.kind === 5 ? { video: { originalName: item.originalName, url: `/api/elements/${item.id}/video` } } : {}),
+      ...(item.kind === 6 ? { album: { title: item.summary || "图集" } } : {}),
     }))]));
     return {
       ids: selected.filter((row) => row.bucket === "element").map((row) => row.id),
@@ -87,23 +95,40 @@ export function createCanvasRepository(db, { publicOnly = false } = {}) {
         const sid = hasSpaces && spaceId != null ? Number(spaceId) : (hasSpaces ? db.prepare("SELECT id FROM spaces WHERE archived_at IS NULL ORDER BY sort,id LIMIT 1").get()?.id : null);
         const grouped = view === "tags" && !tag ? overview({ ids, groupIds, q, limit, spaceId: sid }) : null;
         const spaceFilter = sid == null ? "" : " AND space_id=?";
-        const active = grouped ? grouped.ids : db.prepare(`SELECT id FROM elements WHERE deleted_at IS NULL ${publicOnly ? "AND local_only=0" : ""}${spaceFilter} AND id IN (SELECT value FROM json_each(?))`)
+        const memberFilter = hasAlbums ? " AND id NOT IN (SELECT image_id FROM album_items)" : "";
+        const active = grouped ? grouped.ids : db.prepare(`SELECT id FROM elements WHERE deleted_at IS NULL ${publicOnly ? "AND local_only=0" : ""}${spaceFilter}${memberFilter} AND id IN (SELECT value FROM json_each(?))`)
           .all(...(sid == null ? [JSON.stringify(ids)] : [sid, JSON.stringify(ids)])).map((row) => row.id);
         if (expand && !active.includes(expand)) throw elementError("请先把要展开的内容加入画布", 400);
         const room = grouped ? 0 : Math.min(limit, maxCanvasNodes - active.length);
         const added = room ? candidates(active, q, tag, expand, room, sid).map((row) => row.id) : [];
         const selected = JSON.stringify([...active, ...added]);
-        const elements = db.prepare(`SELECT e.id, e.kind, coalesce(i.original_name,v.original_name) AS original_name, substr(e.body, 1, 240) AS summary, p.x, p.y,
+        const elements = (!hasAlbums ? db.prepare(`SELECT e.id, e.kind, coalesce(i.original_name,v.original_name) AS original_name, substr(e.body, 1, 240) AS summary, p.x, p.y,
           (SELECT json_group_array(t.name) FROM canonical_element_tags et JOIN tags t ON t.id=et.tag_id WHERE et.element_id=e.id) AS tags,
           (SELECT json_group_array(json_object('name',t.name,'resultId',b.result_id)) FROM organization_bindings b JOIN resolved_tags t ON t.id=b.tag_id WHERE b.element_id=e.id) AS ai_tags
           FROM elements e LEFT JOIN canvas_positions p ON p.element_id=e.id
           LEFT JOIN element_images i ON i.element_id=e.id
           LEFT JOIN element_videos v ON v.element_id=e.id
-          WHERE e.id IN (SELECT value FROM json_each(?)) ORDER BY e.id DESC`).all(selected).map((row) => ({
+          WHERE e.id IN (SELECT value FROM json_each(?)) ORDER BY e.id DESC`).all(selected) : db.prepare(`SELECT e.id, e.kind, coalesce(i.original_name,v.original_name) AS original_name,
+          coalesce(am.title, substr(e.body, 1, 240)) AS summary, p.x, p.y,
+          am.title AS album_title,
+          (SELECT count(*) FROM album_items ai JOIN elements ie ON ie.id=ai.image_id WHERE ai.album_id=e.id AND ie.deleted_at IS NULL) AS album_item_count,
+          coalesce(am.cover_image_id, (SELECT ai.image_id FROM album_items ai JOIN elements ie ON ie.id=ai.image_id WHERE ai.album_id=e.id AND ie.deleted_at IS NULL ORDER BY ai.position, ai.image_id LIMIT 1)) AS album_cover_image_id,
+          (SELECT json_group_array(t.name) FROM canonical_element_tags et JOIN tags t ON t.id=et.tag_id WHERE et.element_id=e.id) AS tags,
+          (SELECT json_group_array(json_object('name',t.name,'resultId',b.result_id)) FROM organization_bindings b JOIN resolved_tags t ON t.id=b.tag_id WHERE b.element_id=e.id) AS ai_tags
+          FROM elements e LEFT JOIN canvas_positions p ON p.element_id=e.id
+          LEFT JOIN element_images i ON i.element_id=e.id
+          LEFT JOIN element_videos v ON v.element_id=e.id
+          LEFT JOIN album_meta am ON am.element_id=e.id
+          WHERE e.id IN (SELECT value FROM json_each(?)) ORDER BY e.id DESC`).all(selected)).map((row) => ({
           id: row.id, kind: kindNames[row.kind], summary: row.summary,
           tags: JSON.parse(row.tags), aiTags: JSON.parse(row.ai_tags), position: view === "tags" || row.x === null ? null : { x: row.x, y: row.y },
           ...(row.kind === 2 ? { image: { originalName: row.original_name }, thumbnailUrl: `/api/elements/${row.id}/thumbnail` } : {}),
           ...(row.kind === 5 ? { video: { originalName: row.original_name, url: `/api/elements/${row.id}/video` } } : {}),
+          ...(row.kind === 6 ? { album: {
+            title: row.album_title || "图集",
+            itemCount: row.album_item_count || 0,
+            ...(row.album_cover_image_id ? { cover: { imageId: row.album_cover_image_id, url: `/api/elements/${row.album_cover_image_id}/thumbnail` } } : {}),
+          } } : {}),
         }));
         const edges = db.prepare(`SELECT id, source_id, target_id, kind, name, direction, reverse_name, tag_relation_id, target_tag FROM resolved_element_relations
           WHERE source_id IN (SELECT value FROM json_each(?)) AND target_id IN (SELECT value FROM json_each(?))

@@ -5,11 +5,37 @@ export const agentHash = value => createHash('sha256').update(JSON.stringify(val
 const parse = value => JSON.parse(value || '{}');
 const conflict = message => agentError('STATE_CONFLICT', message, 409);
 export function createAgentWorkbenchRepository(db) {
+  const listeners = new Set();
+  let pendingNotes = null;
   function atomic(fn) {
     if (db.isTransaction) return fn();
+    const notes = [];
+    const previous = pendingNotes;
+    pendingNotes = notes;
     db.exec('BEGIN IMMEDIATE');
-    try { const result = fn(); if (result?.then) throw new Error('Database transactions must be synchronous'); db.exec('COMMIT'); return result; }
-    catch (error) { db.exec('ROLLBACK'); throw error; }
+    try {
+      const result = fn();
+      if (result?.then) throw new Error('Database transactions must be synchronous');
+      db.exec('COMMIT');
+      pendingNotes = previous;
+      for (const note of notes) note();
+      return result;
+    } catch (error) {
+      pendingNotes = previous;
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  function notifySession(id) {
+    const emit = () => {
+      let value;
+      try { value = session(id); } catch { return; }
+      for (const listener of [...listeners]) {
+        try { listener(value); } catch {}
+      }
+    };
+    if (pendingNotes) pendingNotes.push(emit);
+    else emit();
   }
   function requireRow(table, id) {
     if (!['agent_sessions', 'agent_turns', 'agent_approvals', 'agent_workspaces'].includes(table)) throw new Error('Invalid repository table');
@@ -45,6 +71,7 @@ export function createAgentWorkbenchRepository(db) {
       });
     },
     workspace, session, turn, approval,
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     createWorkspace(value) {
       const now = Date.now();
       const result = db.prepare('INSERT INTO agent_workspaces(kind,user_path,canonical_path,identity,name,trusted_at,created_at) VALUES(?,?,?,?,?,?,?)').run(value.kind === 'scratch' ? 1 : 0, value.userPath, value.path, value.identity, value.name || '', now, now);
@@ -82,8 +109,8 @@ export function createAgentWorkbenchRepository(db) {
         append(id, null, s.generation, 'session.policy_changed', { revision: revision + 1 }); return session(id);
       });
     },
-    // Approval mode applies to the next turn. The running turn keeps the mode it started with,
-    // and a pending approval stays decidable.
+    // Live mode updates are coordinated by the service. Keep the revision stable
+    // so pending requests remain decidable while the engine changes its policy.
     updateApprovalMode(id, revision, approvalMode) {
       return atomic(() => {
         const s = session(id);
@@ -108,7 +135,9 @@ export function createAgentWorkbenchRepository(db) {
         const id = Number(result.lastInsertRowid);
         db.prepare("UPDATE agent_drafts SET text='',attachments='[]',request_key=NULL,revision=revision+1 WHERE session_id=? AND request_key=? AND text=? AND attachments=?").run(sessionId, key, input.text, JSON.stringify(input.artifactIds || []));
         db.prepare('UPDATE agent_sessions SET state=1,revision=revision+1 WHERE id=?').run(sessionId);
-        append(sessionId, id, s.generation, 'turn.queued', { turnId: id }); return turn(id);
+        append(sessionId, id, s.generation, 'turn.queued', { turnId: id });
+        notifySession(sessionId);
+        return turn(id);
       });
     },
     startTurn(id) {
@@ -172,7 +201,9 @@ export function createAgentWorkbenchRepository(db) {
         db.prepare('UPDATE agent_approvals SET state=3,decision=\'reject\' WHERE turn_id=? AND state=0').run(id);
         db.prepare('UPDATE agent_turns SET state=?,data=?,finished_at=? WHERE id=?').run(turnStates.indexOf(state), JSON.stringify(data), Date.now(), id);
         db.prepare('UPDATE agent_sessions SET state=?,revision=revision+1 WHERE id=?').run(state === 'unknown' ? 2 : 0, t.sessionId);
-        append(t.sessionId, id, t.generation, 'turn.finished', { state, ...data }); return turn(id);
+        append(t.sessionId, id, t.generation, 'turn.finished', { state, ...data });
+        notifySession(t.sessionId);
+        return turn(id);
       });
     },
     cancelling(id) {

@@ -6,6 +6,7 @@ import VocabularySettings from "./VocabularySettings.jsx";
 import VideoAnalysisSettings from "./VideoAnalysisSettings.jsx";
 import ElementUsagePanel from "./ElementUsagePanel.jsx";
 import { QuotaAppearanceSettings, QuotaSourceSettings } from './QuotaSettings.jsx';
+import Pan115Connections from './Pan115Connections.jsx';
 import { ConfirmDialog, DialogFrame, SaveBar } from "./ui/index.js";
 
 // Sections whose changes wait for an explicit save. 外观 / 浏览偏好 and 词表 apply immediately, so they get no save bar.
@@ -26,6 +27,7 @@ const navGroups = [
       { id: "general", icon: Palette, title: "外观与浏览", description: "主题、卡片标签" },
       { id: "sharing", icon: Wifi, title: "局域网共享", description: "访问地址、开关" },
       { id: "agent-connect", icon: Bot, title: "Agent 连接", description: "聊天引擎、程序与模型" },
+      { id: "pan115", icon: Wifi, title: "115 连接", description: "扫码登录、重新登录" },
     ],
   },
   {
@@ -93,6 +95,7 @@ export default function SettingsDialog({ theme, onThemeChange, atmosphere = "ful
         </div>)}
       </nav>
       <div className="settings-content" ref={contentRef}>
+      {activeSection === 'pan115' && <Pan115Connections />}
       <div id="settings-general" hidden={activeSection !== "general"}>
       <section className="settings-section" aria-labelledby="appearance-settings-heading">
         <header className="settings-section-header"><Palette size={19} /><h3 id="appearance-settings-heading">外观</h3></header>

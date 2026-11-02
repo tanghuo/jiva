@@ -232,7 +232,7 @@ test("Canvas connects by dragging, edits full text, persists layout, retries sav
   await page.getByRole("button", { name: "添加内容", exact: true }).click();
   const creation = page.getByRole("dialog", { name: "添加内容", exact: true });
   await creation.getByLabel("文字", { exact: true }).fill("画布中新建的笔记");
-  await creation.getByRole("button", { name: "保存全部", exact: true }).click();
+  await creation.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await creation.waitFor({ state: "hidden" });
   await page.getByRole("heading", { name: "画布中新建的笔记", exact: true }).waitFor();
   await page.getByRole("button", { name: "关闭画布详情" }).click();
@@ -485,8 +485,8 @@ test("Canvas includes every element from a mixed save even when its active filte
   await dialog.getByRole("button", { name: "添加文字", exact: true }).click();
   await dialog.getByLabel("文字", { exact: true }).last().fill("新文字乙");
   const bytes = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#8598ab" } }).png().toBuffer();
-  await page.getByLabel("导入图片或视频文件").setInputFiles({ name: "新增图片.png", mimeType: "image/png", buffer: bytes });
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await page.getByLabel("导入图片、视频或文本文件").setInputFiles({ name: "新增图片.png", mimeType: "image/png", buffer: bytes });
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   await page.waitForFunction(() => document.querySelector('.canvas-footer')?.textContent.includes('4 条内容'));
   for (const name of ["新文字甲", "新文字乙", "新增图片.png"]) await page.locator('.react-flow__node').getByText(name, { exact: true }).first().waitFor();

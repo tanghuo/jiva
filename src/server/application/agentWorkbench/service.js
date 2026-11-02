@@ -7,7 +7,7 @@ import { registerWorkspace, containsPath, pathIdentity, localPath } from './work
 import { createFileGateway } from './files.js';
 import { workflowAgentTools, workflowCallChain } from '../../../shared/domain/agentWorkbench/workflow.js';
 import { createWikiTemplate } from './wikiTemplate.js';
-import { approvalMode } from '../../../shared/domain/agentWorkbench/approvalPolicy.js';
+import { approvalMode, liveApprovalPolicy } from '../../../shared/domain/agentWorkbench/approvalPolicy.js';
 import { toolStatus } from '../../../shared/domain/agentWorkbench/events.js';
 import { createTurnChanges } from './changes.js';
 import { antigravityReadOnlyCommand } from './antigravityApproval.js';
@@ -18,6 +18,15 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
   const config = await readFile(configFile, 'utf8').then(JSON.parse).catch(error => { if (error.code === 'ENOENT') return {}; throw error; });
   let enabled = config.primaryWorkbench ? (config.agentWorkbenchEnabled ?? initiallyEnabled) : initiallyEnabled, closing = false, antigravityConnection;
   const active = new Map(), waiting = new Map(), resuming = new Map();
+  const policyChanges = new Map();
+  async function serializePolicy(id, change) {
+    const previous = policyChanges.get(id) || Promise.resolve();
+    const pending = previous.catch(() => {}).then(change);
+    policyChanges.set(id, pending);
+    try { return await pending; } finally { if (policyChanges.get(id) === pending) policyChanges.delete(id); }
+  }
+  const activeJob = id => [...active.values()].find(job => job.sessionId === Number(id));
+  const withApprovalUpdate = session => ({ ...session, approvalUpdate: activeJob(session.id)?.approvalUpdate });
   const modelReads = new Set(), modelController = new AbortController();
   repo.recover();
   const turnChanges = createTurnChanges({ repo, dataDir });
@@ -36,32 +45,79 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
   function settleApprovals(turnId) {
     for (const [id, entry] of waiting) if (entry.turnId === turnId) { waiting.delete(id); entry.resolve(false); }
   }
-  async function approve(turn, operation, engine) {
+  async function automaticApproval(turn, operation, engine) {
     assertLive(turn);
     const session = repo.session(turn.sessionId);
     const mode = active.get(turn.id)?.approvalMode || approvalMode(session.policy.approvalMode, session.engine);
     if (session.engine === 'antigravity-acp' && mode === 'auto' && operation.kind === 'engine.permission'
-        && engine?.capabilities?.verified === true && engine.capabilities.approvalMode === mode
-        && await antigravityReadOnlyCommand(operation, repo.workspace(session.workspaceId))) {
+        && engine?.capabilities?.verified === true && engine.capabilities.approvalMode === mode) {
+      const readOnly = await antigravityReadOnlyCommand(operation, repo.workspace(session.workspaceId));
       assertLive(turn);
-      repo.event(turn.id, turn.generation, 'approval.automatic', { operation, policyRevision: session.revision, mode, source: 'workbench', reason: 'read_only_command' });
-      return true;
+      if (active.get(turn.id)?.approvalMode !== mode) return automaticApproval(turn, operation, engine);
+      if (readOnly) return { mode, source: 'workbench', reason: 'read_only_command' };
     }
     if (['file.write', 'command'].includes(operation.kind) && session.engine === 'grok-build'
-        && engine?.capabilities?.verified === true && engine.capabilities.approvalMode === mode
+        && engine?.capabilities?.verified === true && (mode === 'allow' || engine.capabilities.approvalMode === 'auto')
         && ['auto', 'allow'].includes(mode)) {
-      repo.event(turn.id, turn.generation, 'approval.automatic', { operation, policyRevision: session.revision, mode, source: mode === 'auto' ? 'grok' : 'workbench' });
-      return true;
+      return { mode, source: mode === 'auto' ? 'grok' : 'workbench' };
     }
     if (session.engine === 'codex-cli' && mode === 'allow' && String(operation.kind || '').startsWith('native.')) {
-      repo.event(turn.id, turn.generation, 'approval.automatic', { operation, policyRevision: session.revision, mode, source: 'workbench' });
-      return true;
+      return { mode, source: 'workbench' };
     }
-    if (operation.kind === 'file.write' && session.policy.write === 'allow_workspace') return true;
+    if (session.engine === 'antigravity-acp' && engine?.capabilities?.verified === true
+        && operation.kind === 'engine.permission' && (mode === 'allow' || mode === 'auto' && operation.tool === 'edit')) {
+      return { mode, source: 'workbench' };
+    }
+    if (session.engine === 'grok-build' && ['ask', 'allow'].includes(mode) && engine?.capabilities?.verified === true && operation.kind === 'engine.permission') {
+      return { mode, source: 'workbench', ...(mode === 'ask' && { reason: 'host_gateway' }) };
+    }
+    if (operation.kind === 'file.write' && session.policy.write === 'allow_workspace' && session.policy.approvalMode === undefined) return { mode, source: 'workbench' };
+    return false;
+  }
+  function recordAutomaticApproval(turn, operation, decision) {
+    repo.event(turn.id, turn.generation, 'approval.automatic', { operation, policyRevision: repo.session(turn.sessionId).revision, ...decision });
+  }
+  async function approve(turn, operation, engine) {
+    const automatic = await automaticApproval(turn, operation, engine);
+    if (automatic) { recordAutomaticApproval(turn, operation, automatic); return true; }
+    assertLive(turn);
     const approval = repo.requestApproval(turn.id, turn.generation, operation);
     return new Promise(resolve => {
-      waiting.set(approval.id, { turnId: turn.id, resolve });
+      waiting.set(approval.id, { turnId: turn.id, turn, operation, engine, resolve });
     });
+  }
+  async function applyLiveApproval(job, requestedMode) {
+    const session = repo.session(job.sessionId), engine = job.engine;
+    if (!engine || !['running', 'awaiting_approval'].includes(repo.turn(job.id).state)) return;
+    if (engine.capabilities?.verified !== true) throw agentError('UNSUPPORTED_POLICY', '引擎未通过权限验证，不能在本轮切换审批模式');
+    let update;
+    if (session.engine === 'antigravity-acp') {
+      if (engine.setApprovalMode) {
+        try { await engine.setApprovalMode(requestedMode); }
+        catch (error) {
+          // Rejected RPCs leave the old mode in place. Ambiguous failures must
+          // stop execution instead of claiming that a stricter policy applied.
+          if (![-32601, -32602].includes(error.rpcCode ?? error.code)) { void service.cancel(job.id).catch(() => {}); throw error; }
+        }
+      }
+      update = engine.capabilities?.approvalMode === requestedMode
+        ? liveApprovalPolicy(session.engine, requestedMode, requestedMode)
+        : { mode: job.approvalMode, status: 'deferred', message: '引擎未支持本轮切换，已保存为下一轮生效' };
+    } else update = liveApprovalPolicy(session.engine, engine.capabilities?.approvalMode || job.approvalMode, requestedMode);
+    assertLive(job.turn);
+    job.approvalMode = update.mode;
+    job.approvalUpdate = { ...update, requestedMode };
+    repo.event(job.id, job.turn.generation, 'approval.mode_changed', job.approvalUpdate);
+    for (const [id, entry] of [...waiting]) {
+      if (entry.turnId !== job.id || waiting.get(id) !== entry) continue;
+      const automatic = await automaticApproval(entry.turn, entry.operation, entry.engine);
+      if (!automatic || waiting.get(id) !== entry) continue;
+      const approval = repo.approval(id);
+      if (approval.state !== 'pending') continue;
+      const result = repo.decide(id, { decision: 'allow', revision: approval.policyRevision, operationHash: approval.operationHash });
+      recordAutomaticApproval(entry.turn, entry.operation, automatic);
+      waiting.delete(id); entry.resolve(result.state === 'approved');
+    }
   }
   async function run(job) {
     let engine, terminals, turn, snapshot, emitted = Promise.resolve(), text = '', textTimer, textBytes = 0, textType = 'message.delta', messageMeta = {};
@@ -75,7 +131,7 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
       snapshot = await workbenchGitSnapshot(workspace.path);
       repo.event(turn.id, turn.generation, 'workspace.baseline', snapshot);
       const emit = (type, data) => { emitted = emitted.then(() => { assertLive(turn); return repo.event(turn.id, turn.generation, type, data); }); return emitted; };
-      const mode = approvalMode(session.policy.approvalMode, session.engine);
+      const mode = approvalMode(repo.session(session.id).policy.approvalMode, session.engine);
       job.approvalMode = mode;
       let attachmentFiles = [];
       const files = createFileGateway({ workspace, readRoots: session.policy.readRoots || [], readFiles: () => attachmentFiles.map(file => file.path), assertLive: () => assertLive(turn), approve: operation => approve(turn, operation, engine), onChange: change => emit('file.changed', change) });
@@ -151,16 +207,21 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
             // Verified Grok tools always execute through our file/terminal hosts.
             // Ask mode defers the single decision to that actual operation.
             // Auto mode only reaches here when Grok needs a human decision.
-            const delegated = engine?.capabilities?.verified === true && engine.capabilities.approvalMode === mode;
-            const allow = delegated && mode !== 'auto' ? true : await approve(turn, { kind: 'engine.permission', tool: name || 'unknown', title: call.title || '', input: call.rawInput || {} });
+            const currentMode = job.approvalMode;
+            const delegated = engine?.capabilities?.verified === true;
+            const allow = delegated && currentMode !== 'auto' ? true : await approve(turn, { kind: 'engine.permission', tool: name || 'unknown', title: call.title || '', input: call.rawInput || {} }, engine);
             const option = params.options?.find(entry => entry.kind === (allow ? 'allow_once' : 'reject_once'));
             return { outcome: option ? { outcome: 'selected', optionId: option.optionId } : { outcome: 'cancelled' } };
           }
           throw agentError('UNSUPPORTED_REQUEST', '不支持的引擎宿主请求', 403);
         }, onExit(error) { job.engineError = error || new Error('引擎连接断开'); },
       });
-      job.engine = engine; assertLive(turn);
       if (mode !== 'ask' && (engine.capabilities?.verified !== true || engine.capabilities.approvalMode !== mode)) throw agentError('UNSUPPORTED_POLICY', '引擎未确认工作台审批策略，任务未发送');
+      await serializePolicy(session.id, async () => {
+        job.engine = engine; assertLive(turn);
+        const requested = approvalMode(repo.session(session.id).policy.approvalMode, session.engine);
+        if (requested !== mode || job.approvalUpdate) await applyLiveApproval(job, requested);
+      });
       repo.connected(turn.id, turn.generation, { sessionId: engine.sessionId, version: engine.version, capabilities: engine.capabilities });
       const attachments = tasks?.promptAttachments ? await tasks.promptAttachments(turn.input.artifactIds || [], session.id) : { images: await Promise.all((turn.input.artifactIds || []).map(id => tasks.modelImage(id, session.id))), text: '' };
       attachmentFiles = attachments.files || [];
@@ -263,7 +324,8 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
       // A turn already opening the engine keeps the pair it read. The next turn uses this one.
       return repo.updateSessionModel(Number(id), model, value.effort);
     },
-    list: () => repo.list(), detail: id => ({ ...repo.detail(id), ...(tasks && { tasks: tasks.list(id), operations: tasks.operations(id), artifacts: tasks.artifacts(id) }), ...(tools && { proposals: tools.proposals(id), draft: tools.draft(id) }) }), events: (id, after) => repo.events(id, after),
+    list: () => repo.list(), detail: id => ({ ...repo.detail(id), session: withApprovalUpdate(repo.session(id)), ...(tasks && { tasks: tasks.list(id), operations: tasks.operations(id), artifacts: tasks.artifacts(id) }), ...(tools && { proposals: tools.proposals(id), draft: tools.draft(id) }) }), events: (id, after) => repo.events(id, after),
+    subscribe: listener => repo.subscribe(listener),
     saveDraft(id, value) { return tools.saveDraft(id, value); },
     commandOutput(turnId, commandId, offset) { repo.turn(turnId); return commandStore.page(turnId, commandId, offset); },
     changes(id) { return turnChanges.get(Number(id)); },
@@ -317,26 +379,40 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
       return result;
     },
     async policy(id, value) {
-      const s = repo.session(id);
-      const turnActive = () => resuming.has(s.id) || [...active.values()].some(job => job.sessionId === s.id);
-      if (s.purpose === 'workflow' || s.data.restricted) throw agentError('TOOL_DENIED', '受限会话权限不可扩大', 403);
-      if (['codex-cli', 'antigravity-acp'].includes(s.engine)) {
-        if (value.write !== undefined || value.readRoots !== undefined) throw agentError('NATIVE_POLICY', '原生引擎不使用文件网关策略，只能更换审批模式');
+      return serializePolicy(Number(id), async () => {
+        const s = repo.session(id);
+        const turnActive = () => resuming.has(s.id) || [...active.values()].some(job => job.sessionId === s.id);
+        if (s.purpose === 'workflow' || s.data.restricted) throw agentError('TOOL_DENIED', '受限会话权限不可扩大', 403);
+        if (['codex-cli', 'antigravity-acp'].includes(s.engine)) {
+          if (value.write !== undefined || value.readRoots !== undefined) throw agentError('NATIVE_POLICY', '原生引擎不使用文件网关策略，只能更换审批模式');
+          const mode = approvalMode(value.approvalMode ?? s.policy.approvalMode, s.engine);
+          repo.updateApprovalMode(id, value.revision, mode);
+          const job = activeJob(id);
+          if (job) {
+            job.approvalUpdate = { requestedMode: mode, status: 'pending', message: '已保存，正在向本轮引擎应用' };
+            await applyLiveApproval(job, mode);
+          }
+          return withApprovalUpdate(repo.session(id));
+        }
         const mode = approvalMode(value.approvalMode ?? s.policy.approvalMode, s.engine);
-        return repo.updateApprovalMode(id, value.revision, mode);
-      }
-      const mode = approvalMode(value.approvalMode ?? s.policy.approvalMode, s.engine);
-      const approvalOnly = value.approvalMode !== undefined && value.write === undefined && value.readRoots === undefined;
-      if (turnActive()) {
-        if (!approvalOnly) throw agentError('ACTIVE_TURN', '停止此轮后再修改目录或写入权限', 409);
-        return repo.updateApprovalMode(id, value.revision, mode);
-      }
-      const write = value.write ?? (value.approvalMode !== undefined ? 'ask' : s.policy.write), roots = value.readRoots ?? s.policy.readRoots;
-      if (!['ask', 'allow_workspace'].includes(write) || !Array.isArray(roots) || roots.length > 10) throw agentError('INVALID_POLICY', '无效的会话权限');
-      const readRoots = [];
-      for (const root of roots) readRoots.push(await realpath(localPath(root)));
-      if (turnActive()) throw agentError('ACTIVE_TURN', '停止此轮后再修改目录或写入权限', 409);
-      return repo.updatePolicy(id, value.revision, { approvalMode: mode, write, readRoots });
+        const approvalOnly = value.approvalMode !== undefined && value.write === undefined && value.readRoots === undefined;
+        if (turnActive()) {
+          if (!approvalOnly) throw agentError('ACTIVE_TURN', '停止此轮后再修改目录或写入权限', 409);
+          repo.updateApprovalMode(id, value.revision, mode);
+          const job = activeJob(id);
+          if (job) {
+            job.approvalUpdate = { requestedMode: mode, status: 'pending', message: '已保存，正在向本轮引擎应用' };
+            await applyLiveApproval(job, mode);
+          }
+          return withApprovalUpdate(repo.session(id));
+        }
+        const write = value.write ?? (value.approvalMode !== undefined ? 'ask' : s.policy.write), roots = value.readRoots ?? s.policy.readRoots;
+        if (!['ask', 'allow_workspace'].includes(write) || !Array.isArray(roots) || roots.length > 10) throw agentError('INVALID_POLICY', '无效的会话权限');
+        const readRoots = [];
+        for (const root of roots) readRoots.push(await realpath(localPath(root)));
+        if (turnActive()) throw agentError('ACTIVE_TURN', '停止此轮后再修改目录或写入权限', 409);
+        return repo.updatePolicy(id, value.revision, { approvalMode: mode, write, readRoots });
+      });
     },
     async cancel(id) {
       const actual = repo.turn(Number(id)); if (!activeTurnStates.has(actual.state)) return actual;

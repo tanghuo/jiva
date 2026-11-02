@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { elementId, elementQuery, elementTags } from "../../shared/domain/elements.js";
+import { albumCreateInput, albumUpdate } from "../../shared/domain/albums.js";
 import { canvasQuery } from "../../shared/domain/canvas.js";
 import { httpError, json, readJson, readImage } from "./http.js";
 import { serveVideo } from "./videoResponse.js";
@@ -155,9 +156,39 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
     const material = req.headers["x-element-material"];
     if (material !== undefined && !["0", "1"].includes(material)) throw httpError(400, "无效的素材标记");
     const spaceId = resolveRequestSpaceId(wiki, req, url);
-    const result = await wiki.importImage(await readImage(req), name, tags, material === "1", spaceId);
-    json(res, result.importStatus === "reused" ? 200 : 201, result);
+    const albumHeader = req.headers["x-album-id"];
+    const albumId = albumHeader ? elementId(albumHeader) : undefined;
+    const result = await wiki.importImage(await readImage(req), name, tags, material === "1", spaceId, albumId);
+    json(res, result.importStatus === "reused" || result.importStatus === "album-dup" ? 200 : 201, result);
     return true;
+  }
+  if (route === "/api/albums") {
+    if (method === "POST") {
+      const payload = await readJson(req);
+      if (payload.spaceId === undefined) payload.spaceId = resolveRequestSpaceId(wiki, req, url);
+      json(res, 201, wiki.createAlbum(albumCreateInput(payload)));
+    } else throw httpError(405, "Method not allowed");
+    return true;
+  }
+  const albumRoute = route.match(/^\/api\/albums\/([1-9]\d*)(?:\/(items)(?:\/([1-9]\d*))?)?$/);
+  if (albumRoute) {
+    const id = elementId(albumRoute[1]);
+    if (!albumRoute[2]) {
+      if (method === "GET") json(res, 200, wiki.albumItems(id));
+      else if (method === "PATCH") {
+        const previous = wiki.get(id);
+        if (previous.kind !== "album") throw httpError(404, "此内容不是图集");
+        json(res, 200, wiki.updateAlbum(id, albumUpdate(await readJson(req), previous.album ? { ...previous.album, tags: previous.tags } : previous)));
+      }
+      else throw httpError(405, "Method not allowed");
+      return true;
+    }
+    if (albumRoute[2] === "items" && albumRoute[3]) {
+      if (method !== "DELETE") throw httpError(405, "Method not allowed");
+      json(res, 200, wiki.removeAlbumItem(id, elementId(albumRoute[3])));
+      return true;
+    }
+    throw httpError(405, "Method not allowed");
   }
   if (route === "/api/relations/batch") {
     if (method === "POST") json(res, 200, wiki.relateBatch(await readJson(req)));

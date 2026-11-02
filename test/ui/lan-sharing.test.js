@@ -412,7 +412,7 @@ test("App sharing controls pair a mobile page that can edit content but not use 
   await guest.getByRole("button", { name: "添加内容", exact: true }).click();
   const creation = guest.getByRole("dialog", { name: "添加内容", exact: true });
   await creation.getByLabel("文字", { exact: true }).fill("手机添加内容");
-  await creation.getByRole("button", { name: "保存全部", exact: true }).click();
+  await creation.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await creation.waitFor({ state: "hidden" });
   assert.equal((await (await request("/api/elements?q=手机添加内容")).json()).elements.length, 1);
   await guest.getByRole("region", { name: "内容详情", exact: true }).getByRole("button", { name: "返回", exact: true }).click();

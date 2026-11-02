@@ -220,6 +220,7 @@ button[aria-busy="true"] { cursor: progress; }
 
 /* ---------- AgentShell: sessions | timeline | resources, the same three columns on every Agent surface ---------- */
 .agent-shell { display: grid; grid-template-columns: var(--agent-sessions-w, 232px) minmax(0, 1fr) var(--agent-resources-w, 300px); grid-template-rows: minmax(0, 1fr); flex: 1; min-width: 0; min-height: 0; }
+@media (min-width: 901px) { .agent-shell.without-resources { grid-template-columns: var(--agent-sessions-w, 232px) minmax(0, 1fr); } }
 .agent-shell-sessions { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; }
 .agent-shell-timeline { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .agent-shell-resources { grid-column: 3; grid-row: 1; display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; min-height: 0; overflow-y: auto; padding: var(--sp-4); border-left: 1px solid var(--line); }

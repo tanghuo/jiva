@@ -124,10 +124,25 @@ export default function ElementCard({ element, onOpen, onRestore, onSelect, sele
   return <article data-element-id={element.id} data-note-tint={tint} data-note-face={face} ref={card} className={`wiki-card is-${element.kind}${faceClass} ${element.material ? "has-material" : ""} ${element.deletedAt ? "is-trashed" : ""} ${selected ? "is-selected" : ""} ${pending ? "is-loading" : ""}`} aria-busy={pending || undefined}>
     {onSelect && <input className="wiki-card-select" type="checkbox" aria-label={`选择内容：${title}`} checked={selected} disabled={disabled} onChange={() => onSelect(element.id)} />}
     <button className={`wiki-card-open${element.tags?.length ? " has-tags" : ""}`} disabled={disabled || (Boolean(element.deletedAt) && !onSelect)} onClick={() => onSelect ? onSelect(element.id) : onOpen(element.id)} aria-label={`${onSelect ? "选择内容" : "打开内容"}：${title}`} aria-pressed={onSelect ? selected : undefined}>
-      {image ? <div className={`wiki-card-image${imageRatio ? " has-ratio" : ""}`} style={imageRatio ? { "--wiki-image-ratio": imageRatio } : undefined}>{!canPreview ? <ImageIcon size={34} /> : preview === "error" ? <span className="wiki-card-image-error"><ImageIcon size={24} />预览无法加载</span> : <>{previewSize && requested && <img ref={imageNode} key={attempt} src={sizedThumbnail(400)} srcSet={imagePreviewWidths.map((width) => `${sizedThumbnail(width)} ${width}w`).join(", ")} sizes={previewSize} alt={title} loading="eager" decoding="async" onLoad={loaded} onError={() => { finishPreload.current?.(); setPreview("error"); }} />}{pending && <span className="wiki-card-image-loading" aria-hidden="true"><ImageIcon size={24} />正在加载预览…</span>}</>}</div>
+      {element.kind === "album" ? <div className="wiki-album-card-face">
+          <div className="wiki-album-cover-wrap">
+            <div className="wiki-album-cover-stack" aria-hidden="true" />
+            <div className="wiki-album-cover-img">
+              {element.album?.cover?.imageId
+                ? <img src={apiUrl(`/api/elements/${element.album.cover.imageId}/thumbnail?width=800`)} alt="" loading={loading} decoding="async" />
+                : <ImageIcon size={34} />}
+            </div>
+            <span className="wiki-album-count" aria-label={`${element.album?.itemCount || 0} 张`}>▣ {element.album?.itemCount || 0}</span>
+          </div>
+          <div className="wiki-album-card-meta">
+            <strong className="wiki-album-card-title">{element.album?.title || title}</strong>
+            {element.tags?.length > 0 && <div className="wiki-card-tags is-below" title={element.tags.join(" · ")}>{element.tags.slice(0, 3).map((tag) => <span className="wiki-tag" key={tag}>{tag}</span>)}{element.tags.length > 3 && <span className="wiki-card-tag-count">+{element.tags.length - 3}</span>}</div>}
+          </div>
+        </div>
+      : image ? <div className={`wiki-card-image${imageRatio ? " has-ratio" : ""}`} style={imageRatio ? { "--wiki-image-ratio": imageRatio } : undefined}>{!canPreview ? <ImageIcon size={34} /> : preview === "error" ? <span className="wiki-card-image-error"><ImageIcon size={24} />预览无法加载</span> : <>{previewSize && requested && <img ref={imageNode} key={attempt} src={sizedThumbnail(400)} srcSet={imagePreviewWidths.map((width) => `${sizedThumbnail(width)} ${width}w`).join(", ")} sizes={previewSize} alt={title} loading="eager" decoding="async" onLoad={loaded} onError={() => { finishPreload.current?.(); setPreview("error"); }} />}{pending && <span className="wiki-card-image-loading" aria-hidden="true"><ImageIcon size={24} />正在加载预览…</span>}</>}</div>
         : element.kind === "video" ? <VideoCardPreview key={element.id} element={element} disabled={disabled || Boolean(onSelect)} />
           : <div className="wiki-card-text">{face === "prompt" ? <p className="wiki-card-note-kind">提示词</p> : face === "material" ? <p className="wiki-card-note-kind"><BookOpen size={13} aria-hidden="true" /> 资料</p> : <span className="wiki-card-note-quote" aria-hidden="true">“</span>}{(() => { const heading = noteHeading(element, title); const preview = noteBodyPreview(element, heading); return <><strong className="wiki-card-note-title">{heading}</strong>{preview ? <p className="wiki-card-note-body">{preview}</p> : null}</>; })()}</div>}
-      {element.tags?.length > 0 && <div className="wiki-card-tags" title={element.tags.join(" · ")}>{element.tags.slice(0, 2).map((tag) => <span className="wiki-tag" key={tag}>{tag}{element.aiTags?.some((a) => a.name === tag) && <span className="ai-source" title="AI 添加，打开内容查看整理记录">AI</span>}</span>)}{element.tags.length > 2 && <span className="wiki-card-tag-count">+{element.tags.length - 2}</span>}</div>}
+      {element.kind !== "album" && element.tags?.length > 0 && <div className="wiki-card-tags" title={element.tags.join(" · ")}>{element.tags.slice(0, 2).map((tag) => <span className="wiki-tag" key={tag}>{tag}{element.aiTags?.some((a) => a.name === tag) && <span className="ai-source" title="AI 添加，打开内容查看整理记录">AI</span>}</span>)}{element.tags.length > 2 && <span className="wiki-card-tag-count">+{element.tags.length - 2}</span>}</div>}
     </button>
     {element.copyCount > 0 && <div className={`wiki-card-copy-count${face === "prompt" ? " is-prompt-count" : ""}`} title="累计复制成功次数；历史未记录的操作不计入，相似堆叠仅显示当前封面内容的次数。"><Copy size={12} aria-hidden="true" />复制 {element.copyCount} 次</div>}
     {element.material && element.kind !== "text" && <span className="wiki-material-badge">资料</span>}

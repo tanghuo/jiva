@@ -8,7 +8,7 @@ import { resolveBrowserPath } from '../resolveBrowserPath.js';
 import { stubWorkbenchModels } from '../helpers/workbenchModels.js';
 
 const executablePath = resolveBrowserPath();
-test('workbench keeps menus, long titles, activity and details usable across window sizes', { timeout: 45000, skip: !executablePath }, async t => {
+test('workbench keeps menus, long titles and activity usable across window sizes', { timeout: 45000, skip: !executablePath }, async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-layout-'));
   let app, browser;
   const finish = Promise.withResolvers();
@@ -52,6 +52,10 @@ test('workbench keeps menus, long titles, activity and details usable across win
   for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }, { width: 640, height: 360 }]) {
     await page.setViewportSize(viewport);
     await inside(page.locator('.workbench-launcher'));
+    assert.equal(await page.locator('.workbench-layout > .agent-shell-resources').count(), 0);
+    const timeline = await page.locator('.agent-shell-timeline').boundingBox();
+    const shell = await page.locator('.workbench-layout').boundingBox();
+    assert.ok(Math.abs(timeline.x + timeline.width - shell.x - shell.width) <= 1);
     for (const [label, dialog] of [['选择模型与推理强度', '选择模型'], ['选择推理强度', '推理强度'], ['审批模式', '选择审批模式'], ['选择项目', '选择项目']]) {
       await page.getByRole('button', { name: label, exact: true }).click();
       const popup = page.getByRole('dialog', { name: dialog, exact: true });
@@ -93,19 +97,12 @@ test('workbench keeps menus, long titles, activity and details usable across win
     await page.setViewportSize(viewport);
     await inside(page.getByRole('button', { name: '停止', exact: true }));
     await inside(page.locator('.workbench-composer'));
-    // Wide windows always show the 会话详情 column; phones fold it away behind the 会话设置 toggle.
-    const toggle = page.getByRole('button', { name: '会话设置' });
-    if (viewport.width > 900) {
-      assert.equal(await toggle.isVisible(), false);
-      await inside(page.getByRole('complementary', { name: '会话详情' }));
-    } else {
-      assert.equal(await page.getByRole('complementary', { name: '会话详情' }).isVisible(), false);
-      await inside(toggle);
-      await toggle.click();
-      await inside(page.getByRole('complementary', { name: '会话详情' }));
-    }
+    assert.equal(await page.getByRole('button', { name: '会话设置' }).count(), 0);
+    assert.equal(await page.locator('.workbench-layout > .agent-shell-resources').count(), 0);
+    const timeline = await page.locator('.agent-shell-timeline').boundingBox();
+    const shell = await page.locator('.workbench-layout').boundingBox();
+    assert.ok(Math.abs(timeline.x + timeline.width - shell.x - shell.width) <= 1);
     await page.screenshot({ path: `.local/workbench-ui/audit-conversation-${viewport.width}.png` });
-    if (viewport.width <= 900) await toggle.click();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   }
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -113,6 +110,7 @@ test('workbench keeps menus, long titles, activity and details usable across win
   finish.resolve();
   await page.getByRole('button', { name: '发送', exact: true }).waitFor();
   await page.waitForFunction(() => !document.querySelector('.workbench-session-spinner'));
+  await page.locator('.workbench-process-toggle').click();
   assert.equal(await page.locator('.workbench-activity-line').count(), 1);
   assert.match(await page.locator('.workbench-execution > summary').innerText(), /1 次操作/);
   assert.equal(await page.locator('.workbench-activity-spinner').count(), 0);

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, ChevronDown, FileText, FlaskConical, ImageIcon, Video, Layers, MoreHorizontal, Network, Trash2, Share2, Workflow } from "lucide-react";
+import { Bot, ChevronDown, FileText, FlaskConical, ImageIcon, Images, Video, Layers, MoreHorizontal, Network, Trash2, Share2, Workflow } from "lucide-react";
 import SpaceSwitcher from "./SpaceSwitcher.jsx";
 
 // Content sections shown under 「我的内容」. The trash sits at the bottom of the sidebar.
 export const contentSections = [
   { key: "all", label: "全部内容", icon: Layers },
   { key: "image", label: "图片", icon: ImageIcon },
+  { key: "album", label: "图集", icon: Images },
   { key: "video", label: "视频", icon: Video },
   { key: "text", label: "文字", icon: FileText },
   { key: "canvas", label: "关系画布", icon: Network },
@@ -34,11 +35,12 @@ export default function WikiSidebar({
       onSelect={onSelectSpace} onCreateRequest={onCreateSpace} />
     {!readOnly && <button className="wiki-utilities-toggle icon-only" aria-label="更多工具" aria-expanded={utilitiesOpen} onClick={() => setUtilitiesOpen((current) => !current)}><MoreHorizontal size={18} /></button>}
     <nav className="wiki-sidebar-nav" ref={nav} aria-label="页面">
-      {!readOnly && local && <a className={`nav-item wiki-agent-entry ${activeTab === "workbench" ? "active" : ""}`} href="#workbench" aria-label="Agent 工作台" aria-current={activeTab === "workbench" ? "page" : undefined} aria-disabled={busy} onClick={guard}><Bot size={18} /><span>Agent 工作台</span></a>}
+      {!readOnly && local && <a className={`nav-item wiki-agent-entry ${activeTab === "workbench" ? "active" : ""}`} href="#workbench" aria-label="Agent 工作台" aria-current={activeTab === "workbench" ? "page" : undefined} aria-disabled={busy} onClick={guard}><Bot size={20} /><span>Agent 工作台</span></a>}
       <div className={`wiki-sidebar-space-content ${contentFading ? "is-fading" : ""}`}>
         <div className="wiki-sidebar-heading">我的内容</div>
         {contentSections.map(sectionButton)}
         <div className="wiki-sidebar-heading">工具</div>
+        {!readOnly && local && <a className={`nav-item ${activeTab === 'imports' ? 'active' : ''}`} href="#imports" aria-current={activeTab === 'imports' ? 'page' : undefined} onClick={guard}><Images size={18} /><span>磁力导入图集</span></a>}
         {!readOnly && local && <a className={`nav-item wiki-share-entry ${activeTab === 'workflow' ? 'active' : ''}`} href="#workflow" aria-current={activeTab === 'workflow' ? 'page' : undefined} onClick={guard}><Workflow size={18} /><span>工作流</span></a>}
         {/* Occasional tools sit under 更多 on this machine. LAN guests keep a direct entry. */}
         {!readOnly && local ? <div className="wiki-sidebar-more">

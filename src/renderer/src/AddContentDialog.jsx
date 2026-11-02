@@ -15,9 +15,11 @@ export default function AddContentDialog({ value, onChange, onChooseFiles, onClo
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [material, setMaterial] = useState(false);
   const locked = useRef(false);
-  const pending = value.entries.filter((entry) => !entry.saved && (entry.file || entry.body.trim()));
+  const single = value.entries.length === 1;
+  const loading = value.entries.some(entry => entry.loading);
+  const pending = value.entries.filter((entry) => !entry.saved && !entry.loading && (entry.file || entry.body.trim()));
   const saved = value.entries.filter((entry) => entry.saved);
-  const hasUnsaved = pending.length > 0 || !saved.length && (value.tags.tags.length > 0 || value.tags.draft.trim()
+  const hasUnsaved = loading || value.entries.some(entry => entry.error) || pending.length > 0 || !saved.length && (value.tags.tags.length > 0 || value.tags.draft.trim()
     || value.entries.some((entry) => entry.tags.tags.length > 0 || entry.tags.draft.trim()));
   function requestClose() {
     if (locked.current) return;
@@ -41,13 +43,14 @@ export default function AddContentDialog({ value, onChange, onChooseFiles, onClo
   }
   function addText() {
     const last = value.entries.at(-1);
-    const entry = last?.kind === "text" && !last.body.trim() && !last.saved ? last : textDraft();
+    const entry = last?.kind === "text" && !last.file && !last.error && !last.body.trim() && !last.saved ? last : textDraft();
     if (entry !== last) onChange((current) => ({ ...current, entries: [...current.entries, entry] }));
+    else updateEntry(entry.key, { preview: false });
     requestAnimationFrame(() => document.getElementById(`draft-${entry.key}`)?.focus());
   }
   async function submit(event) {
     event.preventDefault();
-    if (locked.current || !pending.length) return;
+    if (locked.current || loading || !pending.length) return;
     setError("");
     let batch;
     try {
@@ -56,7 +59,7 @@ export default function AddContentDialog({ value, onChange, onChooseFiles, onClo
     } catch (failure) { setError(failure.message); return; }
     locked.current = true; setBusy(true); onBusyChange(true);
     const completed = saved.map((entry) => entry.saved);
-    let failures = 0;
+    let failures = value.entries.filter(entry => entry.importError).length;
     try {
       for (const { entry, tags } of batch) {
         setSaving(entry.key); updateEntry(entry.key, { error: "" });
@@ -76,22 +79,24 @@ export default function AddContentDialog({ value, onChange, onChooseFiles, onClo
       else onComplete(completed);
     } finally { locked.current = false; setSaving(null); setBusy(false); }
   }
-  return <><DialogFrame bare title="添加内容" description="图片、视频和文字可以放在一起，每一项独立保存。" className="wiki-dialog wiki-composer" closeLabel="关闭添加内容" busy={busy} onClose={requestClose} onSubmit={submit}
+  const drafts = <div className="wiki-draft-list">{value.entries.map((entry, index) => <ContentDraft key={entry.key} entry={entry} index={index} single={single} busy={busy} saving={saving === entry.key}
+    onChange={(patch) => updateEntry(entry.key, patch)} onRemove={() => onChange((current) => ({ ...current, entries: current.entries.filter((item) => item.key !== entry.key) }))} />)}</div>;
+  return <><DialogFrame bare title="添加内容" description={single ? "预览并保存这项内容。文字支持 Markdown。" : "图片、视频和文字可以放在一起，每一项独立保存。"} className={`wiki-dialog wiki-composer${single ? " wiki-composer-single" : ""}`} closeLabel="关闭添加内容" busy={busy} onClose={requestClose} onSubmit={submit}
     footerClassName="wiki-composer-footer"
     footer={<>
-        <div className="wiki-composer-tools"><button type="button" disabled={busy} onClick={addText}><FileText size={16} />添加文字</button><button type="button" disabled={busy} onClick={onChooseFiles}><Upload size={16} />导入图片或视频</button></div>
-        <span className="wiki-muted">待保存 {pending.length} 项{saved.length > 0 && ` · 已保存 ${saved.length} 项`}</span>
+        <div className="wiki-composer-tools"><button type="button" disabled={busy} onClick={addText}><FileText size={16} />添加文字</button><button type="button" disabled={busy} onClick={onChooseFiles}><Upload size={16} />导入文件</button></div>
+        {!single && <span className="wiki-muted">待保存 {pending.length} 项{saved.length > 0 && ` · 已保存 ${saved.length} 项`}</span>}
         <button type="button" disabled={busy} onClick={requestClose}>{saved.length ? "关闭" : "取消"}</button>
-        <Button variant="primary" type="submit" disabled={busy || !pending.length}><Save size={16} />{busy ? "正在保存…" : saved.length || value.entries.some((entry) => entry.error) ? "重试未保存项" : "保存全部"}</Button>
+        <Button variant="primary" type="submit" disabled={busy || loading || !pending.length}><Save size={16} />{busy ? "正在保存…" : saved.length || value.entries.some((entry) => entry.error) ? "重试未保存项" : single ? "保存" : "保存全部"}</Button>
       </>}>
       <div className="wiki-form-fields">
+        {single && drafts}
         <label className="wiki-material-filter"><input type="checkbox" checked={material} disabled={busy || saved.length > 0} onChange={(event) => setMaterial(event.target.checked)} />本次内容标记为资料</label>
         <div className="wiki-composer-tags"><TagInput label="本次标签" value={value.tags} disabled={busy || saved.length > 0}
           onChange={(tags) => { onChange((current) => ({ ...current, tags })); setError(""); }} />
-          <p className="wiki-muted">这些标签会加到本次所有内容上，每项也可以单独补充。</p></div>
-        <div className="wiki-draft-list">{value.entries.map((entry, index) => <ContentDraft key={entry.key} entry={entry} index={index} busy={busy} saving={saving === entry.key}
-          onChange={(patch) => updateEntry(entry.key, patch)} onRemove={() => onChange((current) => ({ ...current, entries: current.entries.filter((item) => item.key !== entry.key) }))} />)}</div>
-        <p className="wiki-muted">可粘贴、拖入或导入文件。图片支持 PNG、JPEG、WebP、GIF，每张最多 25 MiB；视频支持 MP4、M4V、WebM、MOV，每个最多 1 GiB。播放取决于浏览器支持的编码，可随时下载原文件。</p>
+          {!single && <p className="wiki-muted">这些标签会加到本次所有内容上，每项也可以单独补充。</p>}</div>
+        {!single && drafts}
+        <p className="wiki-muted">可粘贴、拖入或导入图片、视频及 MD、TXT 文件。文字支持 UTF-8，最多 12000 字；图片最多 25 MiB，视频最多 1 GiB。</p>
         {error && <p className="wiki-error" role="alert">{error}</p>}
       </div>
   </DialogFrame>

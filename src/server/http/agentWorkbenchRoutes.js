@@ -14,6 +14,20 @@ export async function handleAgentWorkbenchRoute(service, req, res, url, access, 
   else if (p === '/workspaces' && method === 'GET') result = service.projects();
   else if (p === '/workspaces' && method === 'POST') result = await service.workspace(await body());
   else if (p === '/sessions' && method === 'GET') result = { sessions: service.list() };
+  else if (p === '/sessions/events' && method === 'GET') {
+    let closed = false;
+    const send = session => {
+      if (closed || res.destroyed || !session) return;
+      res.write(`data: ${JSON.stringify({ id: session.id, state: session.state, revision: session.revision, seq: session.seq })}\n\n`);
+      if (res.writableLength > 1024 * 1024) res.end();
+    };
+    const unsubscribe = service.subscribe(send);
+    res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+    for (const session of service.list()) send(session);
+    const heartbeat = setInterval(() => { if (!closed && !res.destroyed) res.write(': heartbeat\n\n'); }, 15000);
+    res.once('close', () => { if (closed) return; closed = true; clearInterval(heartbeat); unsubscribe(); });
+    return true;
+  }
   else if (p === '/sessions' && method === 'POST') result = service.createSession(await body());
   else if (p === '/wiki-template' && method === 'POST') result = await service.wikiTemplate(await body());
   else if ((match = /^\/sessions\/(\d+)$/.exec(p)) && method === 'PATCH') result = service.configureSession(Number(match[1]), await body());

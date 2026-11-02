@@ -146,3 +146,16 @@ test('reasoning snapshots preserve replies, tool order and item identity across 
   assert.deepEqual(groups.map(group => group.items[0].data.text || group.items[0].data.title), ['Final thought', 'Read', 'Answer', 'Snapshot only', ' continued']);
   assert.equal(events[0].data.text, 'Draft');
 });
+
+test('empty completed reasoning blocks cannot erase streamed content or persisted history', async () => {
+  const events = [], emit = createCodexReasoningEvents((type, data) => events.push(event(type, data, events.length)));
+  await emit('item/reasoning/summaryTextDelta', { itemId: 'thought', summaryIndex: 0, delta: 'Keep this summary' });
+  await emit('item/reasoning/textDelta', { itemId: 'thought', contentIndex: 0, delta: 'Keep this content' });
+  await emit('item/completed', { item: { id: 'thought', type: 'reasoning', summary: [''], content: ['  '] } });
+  assert.equal(events.length, 2);
+  // Also replay events stored by earlier clients that accepted empty snapshots.
+  events.push(event('reasoning.updated', { messageId: 'thought', kind: 'summary', partIndex: 0, text: '' }, 3));
+  events.push(event('reasoning.updated', { messageId: 'thought', kind: 'content', partIndex: 0, text: '  ' }, 4));
+  const groups = workbenchTimeline(events, turn);
+  assert.deepEqual(groups.map(group => group.items[0].data.text), ['Keep this summary', 'Keep this content']);
+});

@@ -51,11 +51,15 @@ readline.createInterface({ input: process.stdin }).on('line', async line => {
     return reply(value.id, { sessionId: thread, configOptions: config() });
   }
   if (method === 'session/set_config_option') {
+    if (params.configId === 'mode' && pending.size) {
+      try { await access(path.join(process.cwd(), '.reject-live-mode')); return fail(value.id, -32601, 'Unsupported while prompting'); } catch {}
+    }
     if (params.configId === 'model') model = params.value;
     if (params.configId === 'thinking_level') effort = params.value;
     if (params.configId === 'mode') {
       try { await access(path.join(process.cwd(), '.ignore-mode')); } catch { mode = params.value; }
     }
+    update({ sessionUpdate: 'config_option_update', configOptions: config() });
     return reply(value.id, { configOptions: config() });
   }
   if (method === 'session/cancel') { if (hanging) { reply(hanging, { stopReason: 'cancelled' }); hanging = null; } return; }

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { execFileSync } from 'node:child_process';
 import { build, Platform, Arch } from "electron-builder";
 import { getLoadablePath } from "sqlite-vec";
 
@@ -6,6 +7,7 @@ if (process.platform !== "win32" || Number(process.versions.node.split(".")[0]) 
   throw new Error("Windows packaging requires Windows and Node.js 24 or newer.");
 }
 const directoryOnly = process.argv.includes("--dir");
+execFileSync(process.execPath, [path.resolve(import.meta.dirname, 'build-115-bridge.mjs')], { stdio: 'inherit', windowsHide: true });
 process.env.ELECTRON_BUILDER_CACHE ||= path.resolve(import.meta.dirname, "../.electron-cache/builder");
 await build({
   targets: Platform.WINDOWS.createTarget(directoryOnly ? ["dir"] : ["portable"], Arch.x64),

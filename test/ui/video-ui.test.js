@@ -39,13 +39,20 @@ test("video imports keep original bytes, play and seek, support tags, relations,
   const { app, page, bytes, api } = await setup(t);
   const videoRequests = [];
   page.on("request", (request) => { if (/\/api\/elements\/\d+\/video(?:\?|$)/.test(request.url())) videoRequests.push(request.url()); });
-  const input = page.getByLabel("导入图片或视频文件");
+  const input = page.getByLabel("导入图片、视频或文本文件");
   await input.setInputFiles({ name: "本地动画.webm", mimeType: "video/webm", buffer: bytes });
   const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByLabel("视频内容 1", { exact: true }).waitFor();
+  assert.equal(await dialog.locator(".wiki-content-draft").count(), 1);
+  const draftVideo = dialog.locator("video");
+  await draftVideo.waitFor();
+  assert.equal(await draftVideo.getAttribute("controls"), "");
+  await draftVideo.evaluate(video => video.play());
+  assert.equal(await draftVideo.evaluate(video => video.paused), false);
+  await dialog.getByRole("button", { name: "添加文字", exact: true }).click();
   await dialog.getByLabel("本次标签", { exact: true }).fill("动画");
   await dialog.getByLabel("文字", { exact: true }).fill("这段动画的关联说明");
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "打开内容：本地动画.webm", exact: true }).waitFor();
   const preview = page.locator(".wiki-card-video").first();
@@ -101,7 +108,7 @@ test("video imports keep original bytes, play and seek, support tags, relations,
   assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()), bytes);
 
   await input.setInputFiles({ name: "同一视频.webm", mimeType: "video/webm", buffer: bytes });
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await page.getByText("已复用已有视频，标签已合并", { exact: true }).waitFor();
   assert.equal((await api("elements?kind=video")).pagination.total, 1);
   await page.getByRole("complementary", { name: "内容导航" }).getByRole("button", { name: "视频", exact: true }).click();
@@ -153,7 +160,7 @@ test("pasted videos offer first-frame organization while staying unavailable as 
   }, [...bytes]);
   const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByLabel("视频内容 1", { exact: true }).waitFor();
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   assert.equal((await api("elements?kind=video")).pagination.total, 1);
   await page.getByRole("button", { name: "打开内容：粘贴视频.webm", exact: true }).click();
@@ -178,7 +185,7 @@ test("dropped video remains labeled in the canvas and its inspector can play it"
   }, [...bytes]);
   const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByLabel("视频内容 1", { exact: true }).waitFor();
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   await page.getByRole("complementary", { name: "内容导航" }).getByRole("button", { name: "关系画布", exact: true }).click();
   const node = page.getByRole("button", { name: "选择内容：画布视频.webm", exact: true });

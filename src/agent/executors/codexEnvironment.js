@@ -9,12 +9,13 @@ import { localCodexAuth } from "./codexLocalAuth.js";
 import { childEnvironment } from '../../shared/runtime/childEnvironment.js';
 
 const configHeader = "# Managed by jiva; edit the source Codex config.toml, then reconnect.\n";
+const legacyConfigHeader = "# Managed by self-wiki; edit the source Codex config.toml, then reconnect.\n";
 
 async function syncConfig(source, home) {
   const target = path.join(home, "config.toml");
   let existing;
   try { existing = await readFile(target, "utf8"); } catch (error) { if (error.code !== "ENOENT") throw error; }
-  if (existing !== undefined && !existing.startsWith(configHeader)) {
+  if (existing !== undefined && !existing.startsWith(configHeader) && !existing.startsWith(legacyConfigHeader)) {
     throw new Error("Wiki 默认 Codex 目录已有独立 config.toml；请移走该文件以复用本机配置，或在设置中显式指定此目录");
   }
   let content;

@@ -7,8 +7,8 @@ import { relationRole } from "../../shared/domain/relationRoles.js";
 import { similarStacks } from "./similarStacks.js";
 import { createSpaceRepository } from "./spaceRepository.js";
 
-const kinds = { text: 1, image: 2, session: 3, video: 5 };
-const kindNames = { 1: "text", 2: "image", 3: "session", 5: "video" };
+const kinds = { text: 1, image: 2, session: 3, video: 5, album: 6 };
+const kindNames = { 1: "text", 2: "image", 3: "session", 5: "video", 6: "album" };
 const creationSources = { unknown: 0, manual: 1, chat: 2 };
 
 function present(row) {
@@ -24,6 +24,15 @@ function present(row) {
     ...(row.video_reference_count ? { videoReferenceCount: row.video_reference_count } : {}),
     ...(row.kind === 2 ? { image: { url: `/api/elements/${row.id}/image`, mimeType: row.mime_type, byteSize: row.byte_size, originalName: row.original_name, width: row.image_width || null, height: row.image_height || null } } : {}),
     ...(row.kind === 5 ? { video: { url: `/api/elements/${row.id}/video`, mimeType: row.mime_type, byteSize: row.byte_size, originalName: row.original_name } } : {}),
+    ...(row.kind === 6 ? { album: {
+      title: row.album_title || "",
+      sourceUrl: row.album_source_url || "",
+      itemCount: row.album_item_count || 0,
+      sortMode: row.album_sort_mode || "manual",
+      createdFromPath: row.album_created_from_path || "",
+      coverImageId: row.album_cover_image_id || null,
+      ...(row.album_cover_image_id ? { cover: { url: `/api/elements/${row.album_cover_image_id}/thumbnail`, imageId: row.album_cover_image_id } } : {}),
+    } } : {}),
   };
 }
 
@@ -37,6 +46,7 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
   const hasMarkers = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='video_markers'").get());
   const hasDimensions = db.prepare("PRAGMA table_info(element_images)").all().some((column) => column.name === "width");
   const hasSpaces = db.prepare("PRAGMA table_info(elements)").all().some((column) => column.name === "space_id");
+  const hasAlbums = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='album_items'").get());
   const spaces = hasSpaces ? createSpaceRepository(db) : null;
   function resolveSpaceId(spaceId) {
     if (!spaces) return null;
@@ -65,6 +75,12 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
   }
   const selectElement = `SELECT e.*, ${hasDimensions ? "i.width AS image_width,i.height AS image_height," : ""} ${hasVideos ? "coalesce(i.mime_type,v.mime_type) AS mime_type, coalesce(i.byte_size,v.byte_size) AS byte_size, coalesce(i.original_name,v.original_name) AS original_name" : "i.mime_type, i.byte_size, i.original_name"}, rec.data AS record_data,
     ${hasMarkers ? `(SELECT count(*) FROM video_marker_links ml JOIN video_markers m ON m.id=ml.marker_id JOIN elements owner ON owner.id=m.video_id WHERE ml.target_id=e.id AND owner.deleted_at IS NULL${publicOnly ? " AND owner.local_only=0" : ""}) AS video_reference_count,` : ""}
+    ${hasAlbums ? `am.title AS album_title, am.source_url AS album_source_url, am.sort_mode AS album_sort_mode, am.created_from_path AS album_created_from_path,
+      coalesce(
+        CASE WHEN am.cover_image_id IS NOT NULL AND EXISTS(SELECT 1 FROM elements ce WHERE ce.id=am.cover_image_id AND ce.deleted_at IS NULL) THEN am.cover_image_id END,
+        (SELECT ai.image_id FROM album_items ai JOIN elements ie ON ie.id=ai.image_id WHERE ai.album_id=e.id AND ie.deleted_at IS NULL ORDER BY ai.position, ai.image_id LIMIT 1)
+      ) AS album_cover_image_id,
+      (SELECT count(*) FROM album_items ai JOIN elements ie ON ie.id=ai.image_id WHERE ai.album_id=e.id AND ie.deleted_at IS NULL) AS album_item_count,` : ""}
     (SELECT json_group_array(name) FROM (
       SELECT t.name FROM canonical_element_tags et JOIN tags t ON t.id=et.tag_id
       WHERE et.element_id=e.id ORDER BY t.id
@@ -73,6 +89,7 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
       FROM organization_bindings b JOIN resolved_tags t ON t.id=b.tag_id WHERE b.element_id=e.id) AS ai_tags
     FROM elements e LEFT JOIN element_images i ON i.element_id=e.id
     ${hasVideos ? "LEFT JOIN element_videos v ON v.element_id=e.id" : ""}
+    ${hasAlbums ? "LEFT JOIN album_meta am ON am.element_id=e.id" : ""}
     LEFT JOIN element_records rec ON rec.element_id=e.id`;
   const visibility = publicOnly ? " AND e.local_only=0" : "";
   const vocabulary = createVocabularyRepository(db);
@@ -325,7 +342,7 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
       if (publicOnly) throw elementError("素材标记仅限本机修改", 403);
       return transaction(() => {
         const encoded = JSON.stringify(ids);
-        const eligible = db.prepare("SELECT count(*) AS n FROM elements WHERE id IN(SELECT value FROM json_each(?)) AND deleted_at IS NULL AND kind IN(1,2,5) AND local_only=0").get(encoded).n;
+        const eligible = db.prepare("SELECT count(*) AS n FROM elements WHERE id IN(SELECT value FROM json_each(?)) AND deleted_at IS NULL AND kind IN(1,2,5,6) AND local_only=0").get(encoded).n;
         if (eligible !== ids.length) throw elementError("部分内容不存在、已移入回收站或不能设为素材", 409);
         const result = db.prepare("UPDATE elements SET is_material=? WHERE id IN(SELECT value FROM json_each(?))").run(Number(material), encoded);
         if (result.changes !== ids.length) throw elementError("内容已变化，请重试", 409);
@@ -337,7 +354,8 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
       if (!["updated", "usage"].includes(sort) || (sort === "usage" && kind !== "text")) throw elementError("无效的排序条件");
       const clauses = [scope === "trash" ? "e.deleted_at IS NOT NULL" : "e.deleted_at IS NULL"];
       if (material !== undefined) clauses.push(material ? "e.is_material=1" : "e.is_material=0");
-      if (scope === "library" && !kind) clauses.push("e.kind IN(1,2,5)");
+      if (scope === "library" && !kind) clauses.push(hasAlbums ? "e.kind IN(1,2,5,6)" : "e.kind IN(1,2,5)");
+      if (hasAlbums && scope === "library") clauses.push("e.id NOT IN (SELECT image_id FROM album_items)");
       if (publicOnly) clauses.push("e.local_only=0");
       const values = [];
       const sid = resolveSpaceId(spaceId);
@@ -380,6 +398,10 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         if (hasMarkers && !supportedKinds.length) {
           literal += " OR EXISTS(SELECT 1 FROM video_markers m WHERE m.video_id=e.id AND (m.body LIKE ? ESCAPE '\\' OR EXISTS(SELECT 1 FROM video_marker_tags mt JOIN resolved_tags c ON c.id=mt.tag_id JOIN resolved_tags alias ON alias.canonical_id=c.canonical_id JOIN tags t ON t.id=alias.id WHERE mt.marker_id=m.id AND t.name LIKE ? ESCAPE '\\')))";
           literalValues.push(search, search);
+        }
+        if (hasAlbums) {
+          literal += " OR (e.kind=6 AND EXISTS (SELECT 1 FROM album_meta am2 WHERE am2.element_id=e.id AND am2.title LIKE ? ESCAPE '\\'))";
+          literalValues.push(search);
         }
         if (includeDescription) {
           literal += " OR (e.kind=2 AND EXISTS (SELECT 1 FROM semantic_documents d WHERE d.element_id=e.id AND d.description LIKE ? ESCAPE '\\'))";
@@ -457,7 +479,19 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
     },
     importImage(content, file, missingStorageKey) {
       return transaction(() => {
-        const existing = findImageByHash(file.contentHash, content.spaceId);
+        const albumId = content.albumId ? Number(content.albumId) : null;
+        if (albumId) {
+          const album = db.prepare("SELECT id FROM elements WHERE id=? AND kind=6 AND deleted_at IS NULL").get(albumId);
+          if (!album) throw elementError("图集不存在或已移入回收站", 404);
+          if (hasSpaces) {
+            const albumSpace = elementSpaceId(albumId);
+            const sid = resolveSpaceId(content.spaceId);
+            if (sid != null && albumSpace != null && sid !== albumSpace) throw elementError("图集与导入空间不一致", 409);
+            content = { ...content, spaceId: albumSpace };
+          }
+        }
+        // Album imports always create a fresh member image so library singles stay untouched.
+        const existing = albumId ? null : findImageByHash(file.contentHash, content.spaceId);
         if (existing?.deleted_at) throw elementError("相同图片已在回收站，请恢复后再导入以补充标签", 409);
         if (existing) {
           addTags(existing.id, content.tags);
@@ -482,7 +516,24 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         db.prepare("INSERT INTO element_images (element_id, storage_key, mime_type, byte_size, original_name, content_hash) VALUES (?, ?, ?, ?, ?, ?)")
           .run(id, file.storageKey, file.mimeType, file.byteSize, file.originalName, file.contentHash);
         if (hasDimensions && file.width && file.height) db.prepare("UPDATE element_images SET width=?,height=? WHERE element_id=?").run(file.width, file.height, id);
-        addTags(id, content.tags);
+        if (!albumId) addTags(id, content.tags);
+        if (albumId) {
+          const pos = db.prepare("SELECT coalesce(max(position),-1)+1 AS n FROM album_items WHERE album_id=?").get(albumId).n;
+          // Within one album, identical hashes keep only the first copy.
+          const dup = db.prepare(`SELECT ai.image_id AS id FROM album_items ai
+            JOIN element_images i ON i.element_id=ai.image_id
+            WHERE ai.album_id=? AND i.content_hash=?`).get(albumId, file.contentHash);
+          if (dup) {
+            db.prepare("DELETE FROM element_images WHERE element_id=?").run(id);
+            db.prepare("DELETE FROM elements WHERE id=?").run(id);
+            return { element: { ...get(albumId), importStatus: "album-dup", memberId: dup.id }, keepFile: false };
+          }
+          db.prepare("INSERT INTO album_items(album_id,image_id,position) VALUES(?,?,?)").run(albumId, id, pos);
+          db.prepare("UPDATE elements SET updated_at=? WHERE id=?").run(new Date().toISOString(), albumId);
+          const meta = db.prepare("SELECT cover_image_id FROM album_meta WHERE element_id=?").get(albumId);
+          if (!meta?.cover_image_id) db.prepare("UPDATE album_meta SET cover_image_id=? WHERE element_id=?").run(id, albumId);
+          return { element: { ...get(albumId), importStatus: "album-member", memberId: id }, keepFile: true };
+        }
         return { element: { ...get(id), importStatus: sameName ? "same-name" : "created" }, keepFile: true };
       });
     },
@@ -546,16 +597,33 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
       });
     },
     trash(id) {
-      const now = new Date().toISOString();
-      const result = db.prepare("UPDATE elements SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL").run(now, now, id);
-      if (!result.changes) throw elementError("内容不存在或已移入回收站", 404);
-      return { ok: true };
+      return transaction(() => {
+        const now = new Date().toISOString();
+        const row = db.prepare("SELECT kind FROM elements WHERE id=? AND deleted_at IS NULL").get(id);
+        if (!row) throw elementError("内容不存在或已移入回收站", 404);
+        if (hasAlbums && row.kind === 6) {
+          db.prepare(`UPDATE elements SET deleted_at=?, updated_at=? WHERE id IN(
+            SELECT image_id FROM album_items WHERE album_id=?) AND deleted_at IS NULL`).run(now, now, id);
+        }
+        const result = db.prepare("UPDATE elements SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL").run(now, now, id);
+        if (!result.changes) throw elementError("内容不存在或已移入回收站", 404);
+        return { ok: true };
+      });
     },
     restore(id) {
-      const result = db.prepare("UPDATE elements SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL")
-        .run(new Date().toISOString(), id);
-      if (!result.changes) throw elementError("回收站中没有此内容", 404);
-      return get(id);
+      return transaction(() => {
+        const row = db.prepare("SELECT kind FROM elements WHERE id=? AND deleted_at IS NOT NULL").get(id);
+        if (!row) throw elementError("回收站中没有此内容", 404);
+        const now = new Date().toISOString();
+        if (hasAlbums && row.kind === 6) {
+          db.prepare(`UPDATE elements SET deleted_at=NULL, updated_at=? WHERE id IN(
+            SELECT image_id FROM album_items WHERE album_id=?) AND deleted_at IS NOT NULL`).run(now, id);
+        }
+        const result = db.prepare("UPDATE elements SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL")
+          .run(now, id);
+        if (!result.changes) throw elementError("回收站中没有此内容", 404);
+        return get(id);
+      });
     },
     trashIds() { return db.prepare("SELECT id FROM elements WHERE deleted_at IS NOT NULL ORDER BY id").all().map((row) => row.id); },
     purge(id) {
@@ -569,12 +637,37 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         db.prepare("DELETE FROM tag_relations WHERE source_id = ?").run(id);
         db.prepare("DELETE FROM canvas_positions WHERE element_id = ?").run(id);
         db.prepare("DELETE FROM element_tags WHERE element_id = ?").run(id);
+        let memberKeys = [];
+        if (hasAlbums) {
+          const kind = db.prepare("SELECT kind FROM elements WHERE id=?").get(id)?.kind;
+          if (kind === 6) {
+            const members = db.prepare(`SELECT e.id, i.storage_key FROM album_items ai
+              JOIN elements e ON e.id=ai.image_id LEFT JOIN element_images i ON i.element_id=e.id
+              WHERE ai.album_id=?`).all(id);
+            for (const member of members) {
+              db.prepare("DELETE FROM element_relations WHERE source_id=? OR target_id=?").run(member.id, member.id);
+              db.prepare("DELETE FROM tag_relations WHERE source_id=?").run(member.id);
+              db.prepare("DELETE FROM canvas_positions WHERE element_id=?").run(member.id);
+              db.prepare("DELETE FROM element_tags WHERE element_id=?").run(member.id);
+              db.prepare("DELETE FROM element_images WHERE element_id=?").run(member.id);
+              db.prepare("DELETE FROM elements WHERE id=? AND deleted_at IS NOT NULL").run(member.id);
+              if (member.storage_key) memberKeys.push(member.storage_key);
+            }
+            db.prepare("DELETE FROM album_items WHERE album_id=?").run(id);
+            db.prepare("DELETE FROM album_meta WHERE element_id=?").run(id);
+          } else {
+            db.prepare("DELETE FROM album_items WHERE image_id=?").run(id);
+            db.prepare("UPDATE album_meta SET cover_image_id=NULL WHERE cover_image_id=?").run(id);
+          }
+        }
         db.prepare("DELETE FROM element_images WHERE element_id = ?").run(id);
         db.prepare("DELETE FROM element_videos WHERE element_id=?").run(id);
         if (!db.prepare("DELETE FROM elements WHERE id = ? AND deleted_at IS NOT NULL").run(id).changes) {
           throw elementError("回收站内容已变化，请刷新后重试", 409);
         }
-        return video ? { kind: "video", storageKey: video.storage_key } : image?.storage_key || null;
+        if (video) return { kind: "video", storageKey: video.storage_key };
+        if (memberKeys.length) return { kind: "album", storageKeys: memberKeys, storageKey: image?.storage_key || null };
+        return image?.storage_key || null;
       });
     },
     image(id, { trash = false } = {}) {
@@ -685,6 +778,108 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         JOIN elements e ON e.id = r.source_id WHERE r.id = ? AND e.deleted_at IS NULL${visibility}`).get(id);
       if (!relation) throw elementError("标签关联不存在或来源已移入回收站", 404);
       return tagMembers(relation.tag_id, relation.source_id, query);
+    },
+
+    createAlbum({ title, tags = [], sourceUrl = "", spaceId, createdFromPath = "", material = false }) {
+      if (!hasAlbums) throw elementError("当前库不支持图集", 500);
+      return transaction(() => {
+        const id = insert("album", { body: "", spaceId, material, creationSource: "manual" });
+        db.prepare(`INSERT INTO album_meta(element_id,title,source_url,cover_image_id,sort_mode,created_from_path)
+          VALUES(?,?,?,NULL,'manual',?)`).run(id, title, sourceUrl || "", createdFromPath || "");
+        addTags(id, tags);
+        return get(id);
+      });
+    },
+    albumItems(id) {
+      if (!hasAlbums) throw elementError("当前库不支持图集", 500);
+      const album = get(id);
+      if (album.kind !== "album") throw elementError("此内容不是图集", 404);
+      const rows = db.prepare(`${selectElement}
+        JOIN album_items ai ON ai.image_id=e.id
+        WHERE ai.album_id=? AND e.deleted_at IS NULL${visibility}
+        ORDER BY ai.position, ai.image_id`).all(id);
+      return { album, items: presentList(rows) };
+    },
+    updateAlbum(id, patch) {
+      if (!hasAlbums) throw elementError("当前库不支持图集", 500);
+      return transaction(() => {
+        const album = get(id);
+        if (album.kind !== "album") throw elementError("此内容不是图集", 404);
+        const now = new Date().toISOString();
+        if (patch.title !== undefined || patch.sourceUrl !== undefined || patch.sortMode !== undefined) {
+          db.prepare(`UPDATE album_meta SET
+            title=coalesce(?, title),
+            source_url=coalesce(?, source_url),
+            sort_mode=coalesce(?, sort_mode)
+            WHERE element_id=?`).run(
+            patch.title ?? null,
+            patch.sourceUrl === undefined ? null : patch.sourceUrl,
+            patch.sortMode ?? null,
+            id,
+          );
+        }
+        if (patch.coverImageId !== undefined) {
+          if (patch.coverImageId != null) {
+            const member = db.prepare("SELECT 1 FROM album_items WHERE album_id=? AND image_id=?").get(id, patch.coverImageId);
+            if (!member) throw elementError("封面必须是图集内的图片", 400);
+          }
+          db.prepare("UPDATE album_meta SET cover_image_id=? WHERE element_id=?").run(patch.coverImageId, id);
+        }
+        if (patch.itemOrder) {
+          const current = db.prepare("SELECT image_id AS id FROM album_items WHERE album_id=? ORDER BY position, image_id").all(id).map((r) => r.id);
+          if (current.length !== patch.itemOrder.length || new Set(patch.itemOrder).size !== current.length
+            || patch.itemOrder.some((imageId) => !current.includes(imageId))) {
+            throw elementError("图集成员顺序与当前不一致，请刷新后重试", 409);
+          }
+          const update = db.prepare("UPDATE album_items SET position=? WHERE album_id=? AND image_id=?");
+          patch.itemOrder.forEach((imageId, index) => update.run(index, id, imageId));
+          db.prepare("UPDATE album_meta SET sort_mode='manual' WHERE element_id=?").run(id);
+        }
+        if (patch.sortMode === "name" || patch.sortMode === "added") {
+          const ordered = patch.sortMode === "name"
+            ? db.prepare(`SELECT ai.image_id AS id FROM album_items ai JOIN element_images i ON i.element_id=ai.image_id
+                WHERE ai.album_id=? ORDER BY i.original_name COLLATE NOCASE, ai.image_id`).all(id)
+            : db.prepare(`SELECT ai.image_id AS id FROM album_items ai JOIN elements e ON e.id=ai.image_id
+                WHERE ai.album_id=? ORDER BY e.created_at, ai.image_id`).all(id);
+          const update = db.prepare("UPDATE album_items SET position=? WHERE album_id=? AND image_id=?");
+          ordered.forEach((row, index) => update.run(index, id, row.id));
+        }
+        if (patch.tags) {
+          const updateSpace = elementSpaceId(id);
+          if (updateSpace == null) {
+            db.prepare(`DELETE FROM element_tags WHERE element_id=? AND tag_id NOT IN
+              (SELECT id FROM resolved_tags WHERE normalized_name IN (SELECT value FROM json_each(?)))`)
+              .run(id, JSON.stringify(vocabulary.tags(patch.tags)));
+          } else {
+            db.prepare(`DELETE FROM element_tags WHERE element_id=? AND tag_id NOT IN
+              (SELECT id FROM resolved_tags WHERE space_id=? AND normalized_name IN (SELECT value FROM json_each(?)))`)
+              .run(id, updateSpace, JSON.stringify(vocabulary.tags(patch.tags, updateSpace)));
+          }
+          addTags(id, patch.tags);
+        }
+        db.prepare("UPDATE elements SET updated_at=? WHERE id=?").run(now, id);
+        return get(id);
+      });
+    },
+    removeAlbumItem(albumId, imageId) {
+      if (!hasAlbums) throw elementError("当前库不支持图集", 500);
+      return transaction(() => {
+        const album = get(albumId);
+        if (album.kind !== "album") throw elementError("此内容不是图集", 404);
+        const member = db.prepare("SELECT image_id FROM album_items WHERE album_id=? AND image_id=?").get(albumId, imageId);
+        if (!member) throw elementError("图集中没有这张图片", 404);
+        const now = new Date().toISOString();
+        // v1: 移出图集 = 成员进回收站，不摊回库列表。
+        db.prepare("UPDATE elements SET deleted_at=?, updated_at=? WHERE id=? AND deleted_at IS NULL").run(now, now, imageId);
+        const cover = db.prepare("SELECT cover_image_id FROM album_meta WHERE element_id=?").get(albumId);
+        if (cover?.cover_image_id === imageId) {
+          const next = db.prepare(`SELECT ai.image_id AS id FROM album_items ai JOIN elements e ON e.id=ai.image_id
+            WHERE ai.album_id=? AND e.deleted_at IS NULL ORDER BY ai.position, ai.image_id LIMIT 1`).get(albumId);
+          db.prepare("UPDATE album_meta SET cover_image_id=? WHERE element_id=?").run(next?.id ?? null, albumId);
+        }
+        db.prepare("UPDATE elements SET updated_at=? WHERE id=?").run(now, albumId);
+        return get(albumId);
+      });
     },
     relations(id, { page = 1, pageSize = 36 } = {}) {
       get(id);

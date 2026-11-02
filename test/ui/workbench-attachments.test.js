@@ -44,20 +44,32 @@ test('both workbench composers accept dropped and pasted files, preserve text pa
   assert.deepEqual(references[0].map(file => file.name), [codeName, textName, pdfName]);
   assert.equal(await readFile(references[0][0].path, 'utf8'), 'export const dropped = 17;');
   assert.deepEqual(await readFile(references[0][2].path), workbenchPdf());
-  assert.equal(await page.locator('.workbench-message-references a').count(), 3);
+  assert.equal(await page.locator('.workbench-message-references a').count(), 0);
   const cards = page.locator('.workbench-file-reference');
   assert.equal(await cards.count(), 3);
   assert.deepEqual(await cards.locator('.workbench-file-name').allTextContents(), [codeName, textName, pdfName]);
   assert.match(await cards.first().locator('.workbench-file-meta').innerText(), /PATCH · \d+ B/);
+  assert.equal(await cards.first().getAttribute('aria-label'), `预览附件 ${codeName}`);
   function checkCards() {
     return cards.evaluateAll(nodes => nodes.map(node => {
       const box = node.getBoundingClientRect(), parent = node.parentElement.getBoundingClientRect(), name = node.querySelector('.workbench-file-name');
       return { fits: box.left >= parent.left - 1 && box.right <= parent.right + 1 && name.scrollWidth <= name.clientWidth + 1, bordered: getComputedStyle(node).borderTopStyle === 'solid', icons: node.querySelectorAll('svg').length };
     }));
   }
-  for (const card of await checkCards()) { assert.ok(card.fits); assert.ok(card.bordered); assert.equal(card.icons, 2); }
-  const [download] = await Promise.all([page.waitForEvent('download'), cards.first().click()]);
+  for (const card of await checkCards()) { assert.ok(card.fits); assert.ok(card.bordered); assert.equal(card.icons, 1); }
+  await cards.first().click();
+  const preview = page.getByRole('dialog', { name: '附件预览' });
+  await preview.waitFor();
+  assert.match(await preview.locator('pre').innerText(), /export const dropped = 17;/);
+  const [download] = await Promise.all([page.waitForEvent('download'), preview.getByRole('link', { name: '下载', exact: true }).click()]);
   assert.equal(download.suggestedFilename(), codeName);
+  await preview.getByRole('button', { name: '关闭附件预览', exact: true }).click();
+  await preview.waitFor({ state: 'hidden' });
+  await cards.nth(2).click();
+  await preview.locator('iframe').waitFor();
+  assert.match(await preview.locator('iframe').getAttribute('src'), /\/artifacts\/\d+\/content/);
+  await preview.getByRole('button', { name: '关闭附件预览', exact: true }).click();
+  await preview.waitFor({ state: 'hidden' });
   await mkdir('.local/workbench-ui', { recursive: true });
   await page.screenshot({ path: '.local/workbench-ui/file-reference-cards.png' });
   await page.setViewportSize({ width: 390, height: 844 });

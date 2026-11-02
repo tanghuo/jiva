@@ -5,21 +5,25 @@ import useWikiResource from "./useWikiResource.js";
 import MediaStackCard from "./MediaStackCard.jsx";
 import MediaStackDialog from "./MediaStackDialog.jsx";
 import TagFilter from "./TagFilter.jsx";
-import { elementLabel } from "../../shared/domain/elements.js";
+import { elementLabel, maxElementBody } from "../../shared/domain/elements.js";
 import ElementDetail from "./ElementDetail.jsx";
 import ElementEditor from "./ElementEditor.jsx";
 import useWikiList from "./useWikiList.js";
 import WikiGrid from "./WikiGrid.jsx";
 import WindowedWikiGrid from "./WindowedWikiGrid.jsx";
 import AddContentDialog from "./AddContentDialog.jsx";
+import AlbumPage from "./AlbumPage.jsx";
+import AlbumImportDialog from "./AlbumImportDialog.jsx";
+import { collectDataTransferAlbums, summarizeDroppedFiles } from "./albumFolders.js";
 import { Button, ConfirmDialog, EmptyState, FloatingLayer } from "./ui/index.js";
 import { MoveToSpaceDialog } from "./SpaceSwitcher.jsx";
 import WikiSidebar, { contentSections, wikiSections as tabs } from "./WikiSidebar.jsx";
 import CanvasBoundary from "./CanvasBoundary.jsx";
 import WikiContextMenu from "./WikiContextMenu.jsx";
 import { isEditableTarget, modKey, overlayOpen } from "./shortcuts.js";
-import { appendMediaDrafts, clipboardMedia, savedContentStatus, textDraft } from "./contentDrafts.js";
+import { appendMediaDrafts, clipboardMedia, isContentFile, savedContentStatus, textDraft } from "./contentDrafts.js";
 import Select from "./Select.jsx";
+import { torrentFiles, openMagnetImport, clipboardMagnet } from './magnetImportInput.js';
 import ViewMenu from "./ViewMenu.jsx";
 
 const WikiCanvas = lazy(() => import("./WikiCanvas.jsx"));
@@ -29,6 +33,9 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
   const [stackSimilar, setStackSimilar] = useState(() => { try { return localStorage.getItem("wikiStackSimilar") === "true"; } catch { return false; } });
   const [stackHint, setStackHint] = useState("");
   const [mediaStackId, setMediaStackId] = useState(null);
+  const [albumViewId, setAlbumViewId] = useState(null);
+  const [albumImport, setAlbumImport] = useState(null);
+  const albumFolderInput = useRef(null);
   const [cardWidth, setCardWidth] = useState(() => {
     try {
       const width = Number(localStorage.getItem("wikiMasonryCardWidth"));
@@ -78,7 +85,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
     window.addEventListener("element-usage-recorded", refreshUsage);
     return () => window.removeEventListener("element-usage-recorded", refreshUsage);
   }, [readOnly]);
-  const query = new URLSearchParams({ q, kind: ["text", "image", "video"].includes(tab) ? tab : "", scope: tab === "trash" ? "trash" : "library" });
+  const query = new URLSearchParams({ q, kind: ["text", "image", "video", "album"].includes(tab) ? tab : "", scope: tab === "trash" ? "trash" : "library" });
   if (tab === "text" && !readOnly) query.set("sort", textSort);
   if (materialOnly && tab !== "trash") query.set("material", "1");
   tags.forEach((tag) => query.append("tag", tag));
@@ -86,7 +93,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
   const stacking = stackSimilar && !managing && ["all", "text", "image", "video"].includes(tab);
   if (stacking) query.set("stackSimilar", "1");
   if (!readOnly && tab !== "trash") query.set("semantic", "1");
-  const list = useWikiList(tab === "canvas" ? null : `/api/elements?${query}`, resourceRevision, q.trim() ? 350 : 0, !stack.length && tab !== "canvas" && !busy && !creation);
+  const list = useWikiList(tab === "canvas" || albumViewId ? null : `/api/elements?${query}`, resourceRevision, q.trim() ? 350 : 0, !stack.length && !albumViewId && tab !== "canvas" && !busy && !creation);
   const hasCollapsedMembers = stacking && list.data?.totalElements > list.data?.pagination.total;
   const availableTags = useWikiResource("/api/tags", resourceRevision);
   const browsingElements = list.data?.elements.length ? list.data.elements : list.data?.possible || [];
@@ -219,16 +226,52 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
     let cancelled = false, reading = false, pasteVersion = 0;
     let shortcutTimer;
     const blocked = () => readOnly || writeLock.current || busy || detailBusy || canvasBusy || creationBusy || (document.querySelector("dialog[open]") && !creation);
-    function paste(event) {
+    async function paste(event) {
       pasteVersion++;
       clearTimeout(shortcutTimer);
       if (event.defaultPrevented || blocked()) return;
+      if (!creation && !isEditableTarget(event.target) && !event.target.closest?.('.chat-panel')) {
+        const torrents = torrentFiles(event.clipboardData);
+        const text = event.clipboardData?.getData('text/plain')?.trim();
+        if (torrents.length) { event.preventDefault(); if (torrents.length !== 1) setError('请每次粘贴一个种子文件'); else openMagnetImport(torrents[0]); return; }
+        if (/^magnet:/i.test(text || '')) { event.preventDefault(); openMagnetImport(text); return; }
+      }
+      if (!creation && !isEditableTarget(event.target) && !event.target.closest?.('.chat-panel')) {
+        const entries = Array.from(event.clipboardData?.items || []).map(item => item.webkitGetAsEntry?.()).filter(Boolean);
+        if (entries.some(entry => entry.isDirectory)) {
+          event.preventDefault();
+          void importFolderTransfer({ items: entries.map(entry => ({ webkitGetAsEntry: () => entry })) });
+          return;
+        }
+      }
       const pasted = clipboardMedia(event.clipboardData);
       if (pasted.length) { event.preventDefault(); selectFiles(pasted); }
+      else if (!creation && !event.target.closest?.("input, textarea, select, [contenteditable], .chat-panel")) {
+        const body = event.clipboardData?.getData("text/plain");
+        if (!body?.trim() && !event.clipboardData?.files?.length) {
+          event.preventDefault(); const version = pasteVersion;
+          try { const value = await clipboardMagnet(); if (cancelled || blocked() || version !== pasteVersion) return; if (value) { openMagnetImport(value); return; } }
+          catch (failure) { if (!cancelled) setError(failure.message); return; }
+        }
+        if (window.wikiDesktop?.readClipboardFolders) {
+          event.preventDefault();
+          const version = pasteVersion;
+          try {
+            const result = await window.wikiDesktop.readClipboardFolders();
+            if (cancelled || blocked() || version !== pasteVersion) return;
+            if (result) { showFolderPlan(summarizeDroppedFiles(result.files.map(row => ({ file: new File([row.bytes], row.name), relativePath: row.relativePath })))); return; }
+          } catch (failure) { if (!cancelled && version === pasteVersion) setError(`无法读取文件夹：${failure.message}`); return; }
+        }
+        if (body?.trim()) {
+          event.preventDefault();
+          if (body.length > maxElementBody) { setError(`文字最多 ${maxElementBody} 字，请分段添加。`); return; }
+          setCreation({ entries: [{ ...textDraft(), body, preview: true }], tags: { tags: [], draft: "" } });
+        }
+      }
     }
     function pasteShortcut(event) {
       if (event.defaultPrevented || event.repeat || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey)
-        || event.code !== "KeyV" || blocked() || !navigator.clipboard?.read) return;
+        || event.code !== "KeyV" || blocked() || (!navigator.clipboard?.read && !window.wikiDesktop?.readClipboardFolders)) return;
       // Inputs retain native paste handling, including the chat composer's attachments.
       if (event.target.closest?.("input, textarea, select, [contenteditable], .chat-panel")) return;
       // Keep native file/video paste, but recover when a non-editable target
@@ -242,6 +285,12 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
       if (reading) return;
       reading = true;
       try {
+        if (!creation) { const value = await clipboardMagnet(); if (cancelled || blocked() || version !== pasteVersion) return; if (value) { openMagnetImport(value); return; } }
+        if (!creation && window.wikiDesktop?.readClipboardFolders) {
+          const result = await window.wikiDesktop.readClipboardFolders();
+          if (cancelled || blocked() || version !== pasteVersion) return;
+          if (result) { showFolderPlan(summarizeDroppedFiles(result.files.map(row => ({ file: new File([row.bytes], row.name), relativePath: row.relativePath })))); return; }
+        }
         const items = await navigator.clipboard.read();
         const images = [];
         for (const item of items) {
@@ -284,10 +333,32 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
     setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
 
-  function open(id, contextId, markerId, videoPosition) {
+  async function open(id, contextId, markerId, videoPosition) {
     setBackMenu(null);
     finishManaging();
     setPurgeNotice(""); setError("");
+    // Albums use a dedicated page, not ElementDetail.
+    try {
+      const peek = (list.data?.elements || []).find((element) => element.id === id)
+        || (list.data?.possible || []).find((element) => element.id === id);
+      if (peek?.kind === "album") {
+        savedScroll.current.push(window.scrollY);
+        setStack([]);
+        setAlbumViewId(id);
+        window.scrollTo(0, 0);
+        return;
+      }
+      if (!peek) {
+        const element = await request(`/api/elements/${id}`);
+        if (element.kind === "album") {
+          savedScroll.current.push(window.scrollY);
+          setStack([]);
+          setAlbumViewId(id);
+          window.scrollTo(0, 0);
+          return;
+        }
+      }
+    } catch (failure) { setError(failure.message); return; }
     setDetailScroll(0);
     savedScroll.current.push(window.scrollY);
     setStack((current) => [...current, { id, page: 1, contextId, markerId, videoPosition }]);
@@ -304,15 +375,27 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
     setBackMenu(null);
     finishManaging();
     setImports([]); setPurgeNotice(""); setError(""); setLastDeleted([]);
-    setTab(key); setStack([]); savedScroll.current = []; setQ("");
+    setTab(key); setStack([]); setAlbumViewId(null); savedScroll.current = []; setQ("");
     window.scrollTo(0, 0);
   }
   function selectFiles(chosen) {
     if (readOnly || writeLock.current || busy || detailBusy || canvasBusy || creationBusy || !chosen.length) return;
     if (!creation) setImports([]);
-    const selectedFiles = Array.from(chosen);
+    const selectedFiles = Array.from(chosen).filter(isContentFile);
+    if (!selectedFiles.length) { setError("请选择图片、视频或 MD、TXT 文本文件。"); return; }
     setCreation((current) => appendMediaDrafts(current, selectedFiles));
     if (files.current) files.current.value = "";
+  }
+  function showFolderPlan(plan) {
+    if (plan.albums.length) { setError(""); setAlbumImport(plan); }
+    else setError("文件夹里没有可导入的 PNG、JPEG、WebP 或 GIF 图片。");
+  }
+  async function importFolderTransfer(transfer) {
+    if (readOnly || writeLock.current || busy || detailBusy || canvasBusy || creationBusy || creation || document.querySelector('dialog[open]')) return;
+    writeLock.current = true;
+    try { showFolderPlan(await collectDataTransferAlbums(transfer)); }
+    catch (failure) { setError(`无法读取文件夹：${failure.message}`); }
+    finally { writeLock.current = false; }
   }
   function addContent() { finishManaging(); setImports([]); setCanvasAdded([]); setCreation({ entries: [textDraft()], tags: { tags: [], draft: "" } }); }
   async function editText(element) {
@@ -419,10 +502,13 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
   }} onDragOver={(e) => {
     if (Array.from(e.dataTransfer.types).includes("Files")) { e.preventDefault(); if (!readOnly && !busy && !detailBusy && !canvasBusy) setDragging(true); }
   }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false); }} onDrop={(e) => {
-    e.preventDefault(); setDragging(false); selectFiles(e.dataTransfer.files);
+    e.preventDefault(); setDragging(false);
+    const entries = Array.from(e.dataTransfer.items || []).map(item => item.webkitGetAsEntry?.()).filter(Boolean);
+    if (entries.some(entry => entry.isDirectory)) void importFolderTransfer({ items: entries.map(entry => ({ webkitGetAsEntry: () => entry })) });
+    else selectFiles(e.dataTransfer.files);
   }}>
     <WikiSidebar activeTab={tab} onChooseTab={chooseTab} busy={busy || detailBusy || creationBusy || canvasBusy} readOnly={readOnly} {...spaceProps}>{workspaceNavigation}</WikiSidebar>
-    <main id="main-content" data-tab={tab} data-c-surface={stack.length ? "detail" : tab === "canvas" ? "canvas" : ["all", "image", "video", "text", "trash"].includes(tab) ? "library" : "page"} className={`wiki-main ${stack.length ? "is-detail" : ""} ${tab === "canvas" && !stack.length ? "is-canvas" : ""} ${view === "masonry" && tab !== "canvas" && !stack.length ? "is-masonry" : ""}`}>
+    <main id="main-content" data-tab={tab} data-c-surface={albumViewId ? "album" : stack.length ? "detail" : tab === "canvas" ? "canvas" : ["all", "image", "album", "video", "text", "trash"].includes(tab) ? "library" : "page"} className={`wiki-main ${albumViewId ? "is-album" : ""} ${stack.length ? "is-detail" : ""} ${tab === "canvas" && !stack.length && !albumViewId ? "is-canvas" : ""} ${view === "masonry" && tab !== "canvas" && !stack.length && !albumViewId ? "is-masonry" : ""}`}>
       <div className="toast-region">
         {lastDeleted.length > 0 && <div className="wiki-deletion-feedback" role="status"><span>{lastDeleted.length === 1 ? `“${elementLabel(lastDeleted[0])}”已移入回收站` : `${lastDeleted.length} 条内容已移入回收站`}</span><button className="text-button" disabled={busy || detailBusy} onClick={() => restore(lastDeleted.map((element) => element.id))}>撤销删除</button><button className="icon-only" aria-label="关闭删除提示" disabled={busy} onClick={() => setLastDeleted([])}><X size={16} /></button></div>}
         {stackHint && <p className="wiki-toast" role="status"><CheckCircle2 size={17} aria-hidden="true" /><span>{stackHint}</span><button className="icon-only button-sm" aria-label="关闭提示" onClick={() => setStackHint("")}><X size={16} /></button></p>}
@@ -430,8 +516,8 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
       </div>
       {error && <p className="wiki-error" role="alert">{error}<button onClick={() => setError("")}>关闭提示</button></p>}
       {stack.length === 0 && imports.length > 0 && <section className="wiki-imports" aria-label="保存结果"><header><strong>保存结果</strong><button className="text-button" disabled={busy || creationBusy} onClick={() => setImports([])}>收起</button></header><ul>{imports.map((row, index) => <li key={index}><span>{row.name}</span><span>{row.status}</span><button className="text-button" disabled={busy || detailBusy || creationBusy} onClick={() => open(row.id)} aria-label={`查看保存结果：${row.name}`}>查看</button></li>)}</ul></section>}
-      {tab === "canvas" && <div hidden={stack.length > 0}><CanvasBoundary onBack={() => chooseTab("all")}><Suspense fallback={<p className="wiki-muted">正在打开画布…</p>}><WikiCanvas headerActions={askAgent} readOnly={readOnly} revision={resourceRevision} addedIds={canvasAdded} visible={stack.length === 0} externalBusy={busy || detailBusy || Boolean(creation)} onChanged={refresh} onBusyChange={setCanvasBusy} onAdd={addContent} onOpen={open} /></Suspense></CanvasBoundary></div>}
-      <div hidden={stack.length > 0 || tab === "canvas"}>
+      {tab === "canvas" && <div hidden={stack.length > 0 || Boolean(albumViewId)}><CanvasBoundary onBack={() => chooseTab("all")}><Suspense fallback={<p className="wiki-muted">正在打开画布…</p>}><WikiCanvas headerActions={askAgent} readOnly={readOnly} revision={resourceRevision} addedIds={canvasAdded} visible={stack.length === 0} externalBusy={busy || detailBusy || Boolean(creation)} onChanged={refresh} onBusyChange={setCanvasBusy} onAdd={addContent} onOpen={open} /></Suspense></CanvasBoundary></div>}
+      <div hidden={stack.length > 0 || Boolean(albumViewId) || tab === "canvas"}>
         {/* One floating tool layer: title + search on top, actions top-right, filters in the bottom capsule. */}
         <FloatingLayer className="wiki-float" headerClassName="wiki-page-header page-header" filtersClassName="wiki-toolbar"
           title={<h1>{tabs.find((t) => t.key === tab).label}</h1>}
@@ -441,7 +527,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
           actions={!readOnly && (tab === "trash"
             ? <button className="danger-quiet" disabled={busy || list.loading} onClick={() => { setPurgeConfirmPhrase(""); setPurgeConfirmation({ all: true }); }}><Trash2 size={16} />清空回收站</button>
             : <>{askAgent}<Button variant="primary" disabled={busy} onClick={addContent}><Plus size={16} />添加内容</Button></>)}
-          filters={<>{["all", "image", "video", "text"].includes(tab) && <div className="wiki-type-chips" role="group" aria-label="快速筛选">{contentSections.filter((section) => section.key !== "canvas").map((section) => <button type="button" key={section.key} aria-label={`快速筛选：${section.label}`} aria-pressed={tab === section.key} disabled={busy} onClick={() => chooseTab(section.key)}>{section.key === "all" ? "全部" : section.label}</button>)}</div>}<TagFilter aliases={availableTags.data?.aliases || []} tags={availableTags.data?.tags || []} selected={tags} match={tagMatch} disabled={busy} onChange={(next) => { setTags(next); }} />{tags.length > 1 && <Select className="wiki-tag-match" aria-label="标签匹配方式" value={tagMatch} disabled={busy} onChange={setTagMatch} options={[{ value: "any", label: "任意匹配" }, { value: "all", label: "全部匹配" }]} />}<span>{list.data ? (list.data.possible?.length ? "0 条明确匹配" : hasCollapsedMembers ? `${list.data.pagination.total} 项 · ${list.data.totalElements} 条内容` : `${list.data.pagination.total} 条内容`) : "正在读取…"}</span>
+          filters={<>{["all", "image", "album", "video", "text"].includes(tab) && <div className="wiki-type-chips" role="group" aria-label="快速筛选">{contentSections.filter((section) => section.key !== "canvas").map((section) => <button type="button" key={section.key} aria-label={`快速筛选：${section.label}`} aria-pressed={tab === section.key} disabled={busy} onClick={() => chooseTab(section.key)}>{section.key === "all" ? "全部" : section.label}</button>)}</div>}<TagFilter aliases={availableTags.data?.aliases || []} tags={availableTags.data?.tags || []} selected={tags} match={tagMatch} disabled={busy} onChange={(next) => { setTags(next); }} />{tags.length > 1 && <Select className="wiki-tag-match" aria-label="标签匹配方式" value={tagMatch} disabled={busy} onChange={setTagMatch} options={[{ value: "any", label: "任意匹配" }, { value: "all", label: "全部匹配" }]} />}<span>{list.data ? (list.data.possible?.length ? "0 条明确匹配" : hasCollapsedMembers ? `${list.data.pagination.total} 项 · ${list.data.totalElements} 条内容` : `${list.data.pagination.total} 条内容`) : "正在读取…"}</span>
           {tab === "text" && !readOnly && <Select className="wiki-text-sort" aria-label="文字排序" title="使用次数 = 引用次数 + 复制次数（全部历史记录）" value={textSort} disabled={busy} onChange={setTextSort}
             options={[{ value: "updated", label: "最近更新" }, { value: "usage", label: "使用次数从多到少" }]} />}
           <ViewMenu disabled={busy} changed={materialOnly && tab !== "trash" || !stackSimilar && ["all", "text", "image", "video"].includes(tab)}>
@@ -472,7 +558,8 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
           </ViewMenu>
           {!readOnly && !managing && <details className="library-menu wiki-list-menu" onKeyDown={(event) => { if (event.key === "Escape") event.currentTarget.open = false; }}>
             <summary aria-label="更多操作" title="更多操作"><MoreHorizontal size={18} /></summary>
-            <div className="menu-panel"><button disabled={busy || list.loading || !list.data?.elements.length} onClick={(event) => { event.currentTarget.closest("details").open = false; setSelected(new Set()); setManaging(true); }}><ListChecks size={16} />批量管理</button></div>
+            <div className="menu-panel"><button disabled={busy || list.loading || !list.data?.elements.length} onClick={(event) => { event.currentTarget.closest("details").open = false; setSelected(new Set()); setManaging(true); }}><ListChecks size={16} />批量管理</button>
+              <button disabled={busy || creationBusy} onClick={(event) => { event.currentTarget.closest("details").open = false; albumFolderInput.current?.click(); }}><Upload size={16} />导入文件夹为图集</button></div>
           </details>}</>}>
         {managing && <div className="wiki-batch-toolbar" role="region" aria-label="批量管理">
           <span>已选 {selected.size} 项</span>
@@ -503,7 +590,10 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
         </section>}
         </FloatingLayer>
       </div>
-      {stack.length > 0 && <ElementDetail readOnly={readOnly} externalBusy={busy} key={stack.length} id={stack.at(-1).id} relationPage={stack.at(-1).page} externalRevision={resourceRevision}
+      {albumViewId && <AlbumPage id={albumViewId} revision={resourceRevision} readOnly={readOnly} onBusyChange={setDetailBusy}
+        onBack={() => { const scroll = savedScroll.current.pop() || 0; setAlbumViewId(null); requestAnimationFrame(() => window.scrollTo(0, scroll)); }}
+        onChanged={refresh} />}
+      {stack.length > 0 && !albumViewId && <ElementDetail readOnly={readOnly} externalBusy={busy} key={stack.length} id={stack.at(-1).id} relationPage={stack.at(-1).page} externalRevision={resourceRevision}
         prepared={stack.at(-1).prepared?.revision === resourceRevision ? stack.at(-1).prepared : undefined}
         navigation={browsingIndex < 0 ? undefined : {
           previous: browsingIndex > 0 ? () => navigateDetail(browsingElements[browsingIndex - 1].id) : undefined,
@@ -525,11 +615,15 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
     {mediaStackId && <MediaStackDialog id={mediaStackId} revision={resourceRevision} readOnly={readOnly} onClose={() => setMediaStackId(null)} onOpen={(id) => { setMediaStackId(null); open(id); }} />}
     {backMenu && <WikiContextMenu menu={backMenu} onClose={() => setBackMenu(null)} onSetMaterial={readOnly ? undefined : (element) => setMaterial([element.id], !element.material)} onAddReference={readOnly ? undefined : onAddReference} onEdit={readOnly ? undefined : editText} onBack={back} disabled={busy || detailBusy} onNotice={setPurgeNotice} onError={setError} />}
     {editing && <ElementEditor key={editing.id} element={editing} onBusyChange={setBusy} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); setPurgeNotice("文字已更新"); }} />}
-    {!readOnly && <input ref={files} hidden type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov" aria-label="导入图片或视频文件" onChange={(e) => selectFiles(e.target.files)} />}
+    {!readOnly && <input ref={files} hidden type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov,.md,.markdown,.txt,text/plain,text/markdown" aria-label="导入图片、视频或文本文件" onChange={(e) => selectFiles(e.target.files)} />}
     {(moveOpen || detailMoveIds) && <MoveToSpaceDialog spaces={spaceProps.spaces || []} currentSpaceId={spaceProps.currentSpace?.id}
       count={detailMoveIds ? detailMoveIds.length : selected.size}
       busy={moveBusy} onClose={() => { if (!moveBusy) { setMoveOpen(false); setDetailMoveIds(null); } }}
       onMove={(targetSpaceId) => moveSelected(targetSpaceId, detailMoveIds || null)} />}
+    {albumImport && <AlbumImportDialog plan={albumImport} spaceId={spaceProps.currentSpace?.id}
+      onClose={() => setAlbumImport(null)} />}
+    {!readOnly && <input ref={albumFolderInput} hidden type="file" webkitdirectory="" directory="" multiple aria-label="导入文件夹为图集"
+      onChange={(e) => { const plan = summarizeDroppedFiles(e.target.files); e.target.value = ""; showFolderPlan(plan); }} />}
     {creation && <AddContentDialog value={creation} onChange={setCreation} onChooseFiles={() => files.current.click()}
       onClose={() => setCreation(null)} onBusyChange={setCreationBusy} onSaved={contentSaved} onComplete={completeCreation} />}
     {purgeConfirmation && <ConfirmDialog label="确认永久删除" title={purgeConfirmation.all ? "清空回收站？" : `永久删除选中的 ${purgeConfirmation.ids.length} 项？`}
@@ -539,6 +633,6 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
       <p>{purgeConfirmation.all ? "回收站里的所有内容都会被永久删除，包括还没加载、或被当前搜索和标签筛选隐藏的内容。" : "选中的内容会被永久删除。"}原始图片和视频文件、视频标注、对话里的副本和关联也会一起删除，无法恢复。内容库里的其他内容不受影响。</p>
       <label className="wiki-purge-confirm"><span>输入「永久删除」以确认</span><input value={purgeConfirmPhrase} onChange={(e) => setPurgeConfirmPhrase(e.target.value)} autoFocus disabled={busy} placeholder="永久删除" autoComplete="off" spellCheck={false} /></label>
     </ConfirmDialog>}
-    {dragging && <div className="wiki-drop-overlay"><Upload size={42} /><h2>松开后加入待保存内容</h2></div>}
+    {dragging && <div className="wiki-drop-overlay"><Upload size={42} /><h2>松开后导入；拖入文件夹将识别为图集</h2></div>}
   </div>;
 }

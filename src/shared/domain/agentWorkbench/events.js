@@ -18,6 +18,7 @@ export function workbenchTimeline(events, turn) {
       if (data.id) calls.set(data.id, item);
       items.push(item);
     } else if (['reasoning.delta', 'reasoning.updated'].includes(event.type)) {
+      if (event.type === 'reasoning.updated' && !data.text?.trim()) continue;
       const key = JSON.stringify([data.messageId, data.kind, data.partIndex]);
       const previous = reasoning.get(key);
       if (previous) previous.data.text = event.type === 'reasoning.updated' ? data.text : previous.data.text + data.text;

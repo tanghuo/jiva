@@ -92,8 +92,14 @@ test("Codex config refresh follows source replacement and deletion without overw
   const config = { codexCli: { codexHome: home, reuseLocalAuth: true } };
   const original = 'respect_system_proxy = true\n[model_providers.custom]\nbase_url = "https://example.test"\n[mcp_servers."test.server"]\ncommand = "fixture"\nenabled = true\n';
   await writeFile(path.join(source, "config.toml"), original);
+  await mkdir(home);
+  const legacyConfig = '# Managed by self-wiki; edit the source Codex config.toml, then reconnect.\n' + original;
+  await writeFile(path.join(home, "config.toml"), legacyConfig);
+  await codexEnvironment({ codexCli: { codexHome: home } });
+  assert.equal(await readFile(path.join(home, "config.toml"), "utf8"), legacyConfig);
   await Promise.all(Array.from({ length: 4 }, () => codexEnvironment(config)));
-  assert.ok((await readFile(path.join(home, "config.toml"), "utf8")).endsWith(original));
+  assert.equal(await readFile(path.join(home, "config.toml"), "utf8"),
+    '# Managed by jiva; edit the source Codex config.toml, then reconnect.\n' + original);
   const overrides = await codexMcpOverrides({ CODEX_HOME: home });
   assert.equal(parse(overrides[1]).mcp_servers["test.server"].enabled, false);
   assert.equal(await readFile(path.join(source, "config.toml"), "utf8"), original);

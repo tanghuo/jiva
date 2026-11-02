@@ -6,7 +6,8 @@ import { readCodexQuota, readGrokQuota, readGeminiQuota, subscribeQuotaInvalidat
 
 const messages = {
   AUTH_REQUIRED:'请先在对应官方客户端登录，再检测额度', UNSUPPORTED:'当前客户端不支持此额度接口', TEAM_UNSUPPORTED:'当前接口不支持团队额度',
-  NOT_RUNNING:'请先打开并登录 Antigravity 桌面端', NOT_CONFIGURED:'请先配置额度来源', PROTOCOL_ERROR:'客户端返回的额度格式暂不支持',
+  NOT_RUNNING:'请先在工作台连接 Antigravity 账号，或打开并登录桌面端', NOT_CONFIGURED:'请先配置额度来源', PROTOCOL_ERROR:'客户端返回的额度格式暂不支持',
+  QUOTA_UNAVAILABLE:'Antigravity 未返回可用的 Gemini 额度，请稍后重试',
   AMBIGUOUS_SOURCE:'检测到多个 Antigravity 来源，无法确认当前账号', IDENTITY_CHANGED:'检测期间账号发生变化，请重试',
   TIMEOUT:'额度读取超时，请稍后重试', READ_FAILED:'额度暂时读不到，请检查本机客户端与网络',
 };
@@ -117,7 +118,7 @@ export async function createQuotaService({ repo, dataDir, executionConfig, reade
       const failureCount=(state.failureCount||0)+1;
       const retryAfter=Number.isFinite(error.retryAfterMs)?Math.max(0,error.retryAfterMs):0;
       repo.saveState({...state,state:code==='AUTH_REQUIRED'?'auth_required':['UNSUPPORTED','TEAM_UNSUPPORTED'].includes(code)?'unsupported':'error',failureCount,
-        ...(code==='IDENTITY_CHANGED'?{accountKey:null}:{}),nextAllowedAt:now()+Math.max(retryAfter,Math.min(3600000,120000*2**Math.min(5,failureCount-1))),retryAfterAt:now()+retryAfter,errorCode:code,rpcErrorCode:Number.isSafeInteger(error.code)?error.code:null,safeMessage:messages[code]});
+        ...(code==='IDENTITY_CHANGED'?{accountKey:null}:{}),nextAllowedAt:now()+Math.max(retryAfter,Math.min(3600000,120000*2**Math.min(5,failureCount-1))),retryAfterAt:now()+retryAfter,errorCode:code,rpcErrorCode:Number.isSafeInteger(error.code)?error.code:null,safeMessage:source.provider==='gemini'&&code==='AUTH_REQUIRED'?'Antigravity 授权不可用，请在工作台重新连接账号后重试':messages[code]});
     } finally {clearTimeout(timeout);controllers.delete(controller);}
   }
   function refresh(sourceIds,reason='open',internal=false) {

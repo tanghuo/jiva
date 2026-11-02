@@ -32,3 +32,31 @@ test('workbench migration, idempotent turns, event ordering, approvals and resta
   assert.deepEqual(events.map(e => e.seq), events.map((_, i) => i + 1));
   assert.equal(db.prepare('PRAGMA foreign_key_check').all().length, 0);
 });
+
+test('session state is published after the turn is stored, and a failed turn does not publish', t => {
+  const db = initDb(':memory:'); t.after(() => db.close());
+  const repo = createAgentWorkbenchRepository(db);
+  const workspace = repo.createWorkspace({ kind: 'scratch', userPath: 'fixture', path: 'fixture', identity: 'fixture' });
+  const created = repo.createSession({ workspaceId: workspace.id, engine: 'grok-build', policy: { write: 'ask' } });
+  const seen = [];
+  const stop = repo.subscribe(session => seen.push({ id: session.id, state: session.state, revision: session.revision }));
+  const turn = repo.queueTurn(created.id, 'request-1', { text: 'hello' });
+  assert.deepEqual(seen, [{ id: created.id, state: 'running', revision: 2 }]);
+  repo.queueTurn(created.id, 'request-1', { text: 'hello' });
+  assert.equal(seen.length, 1);
+  assert.throws(() => repo.queueTurn(created.id, 'request-2', { text: 'other' }), { statusCode: 409 });
+  assert.equal(seen.length, 1);
+  const running = repo.startTurn(turn.id);
+  repo.finish(running.id, 'completed');
+  assert.equal(repo.session(created.id).state, 'ready');
+  assert.deepEqual(seen.at(-1), { id: created.id, state: 'ready', revision: 3 });
+  repo.finish(running.id, 'completed');
+  assert.equal(seen.length, 2);
+  const failed = repo.startTurn(repo.queueTurn(created.id, 'request-3', { text: 'again' }).id);
+  repo.finish(failed.id, 'unknown');
+  assert.equal(seen.at(-1).state, 'needs_attention');
+  stop();
+  const quiet = repo.startTurn(repo.queueTurn(created.id, 'request-4', { text: 'quiet' }).id);
+  repo.finish(quiet.id, 'cancelled');
+  assert.equal(seen.at(-1).state, 'needs_attention');
+});

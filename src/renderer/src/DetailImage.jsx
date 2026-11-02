@@ -13,9 +13,7 @@ export default function DetailImage({ src, alt, onLoad, onError, onContextMenu, 
   }, [src]);
 
   function updateView(scale, x = 0, y = 0) {
-    const maxX = Math.max(0, (image.current.clientWidth * scale - stage.current.clientWidth) / 2);
-    const maxY = Math.max(0, (image.current.clientHeight * scale - stage.current.clientHeight) / 2);
-    view.current = { scale, x: Math.max(-maxX, Math.min(maxX, x)), y: Math.max(-maxY, Math.min(maxY, y)) };
+    view.current = { scale, x: scale > 1 ? x : 0, y: scale > 1 ? y : 0 };
     setTransform(view.current);
   }
 

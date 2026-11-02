@@ -72,7 +72,7 @@ test("closing unsaved content asks before discarding and preserves failed batch 
     }
     return route.continue();
   });
-  await composer.getByRole("button", { name: "保存全部", exact: true }).click();
+  await composer.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await composer.getByRole("button", { name: "重试未保存项", exact: true }).waitFor();
   await composer.getByRole("button", { name: "关闭", exact: true }).click();
   await confirmation.getByRole("button", { name: "继续编辑", exact: true }).click();

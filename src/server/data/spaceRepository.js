@@ -43,7 +43,7 @@ export function createSpaceRepository(db) {
 
   function get(id) {
     return present(db.prepare(`SELECT s.*,
-      (SELECT count(*) FROM elements e WHERE e.space_id=s.id AND e.deleted_at IS NULL AND e.kind IN(1,2,5)) AS element_count
+      (SELECT count(*) FROM elements e WHERE e.space_id=s.id AND e.deleted_at IS NULL AND e.kind IN(1,2,5,6)) AS element_count
       FROM spaces s WHERE s.id=? AND s.archived_at IS NULL`).get(id));
   }
 
@@ -63,7 +63,7 @@ export function createSpaceRepository(db) {
   return {
     list() {
       return db.prepare(`SELECT s.*,
-        (SELECT count(*) FROM elements e WHERE e.space_id=s.id AND e.deleted_at IS NULL AND e.kind IN(1,2,5)) AS element_count
+        (SELECT count(*) FROM elements e WHERE e.space_id=s.id AND e.deleted_at IS NULL AND e.kind IN(1,2,5,6)) AS element_count
         FROM spaces s WHERE s.archived_at IS NULL ORDER BY s.sort, s.id`).all().map(present);
     },
     get,
@@ -95,7 +95,7 @@ export function createSpaceRepository(db) {
         const space = get(id);
         const remaining = db.prepare("SELECT count(*) AS n FROM spaces WHERE archived_at IS NULL").get().n;
         if (remaining <= 1) throw elementError("不能删除最后一个空间", 409);
-        const content = db.prepare("SELECT count(*) AS n FROM elements WHERE space_id=? AND deleted_at IS NULL AND kind IN(1,2,5)").get(id).n;
+        const content = db.prepare("SELECT count(*) AS n FROM elements WHERE space_id=? AND deleted_at IS NULL AND kind IN(1,2,5,6)").get(id).n;
         const trash = db.prepare("SELECT count(*) AS n FROM elements WHERE space_id=? AND deleted_at IS NOT NULL").get(id).n;
         if (content + trash > 0) throw elementError("请先把空间里的内容搬走或清空回收站，再删除空间", 409);
         // Soft-archive keeps historical FK rows stable; UI never lists archived spaces.
@@ -111,9 +111,18 @@ export function createSpaceRepository(db) {
         if (sourceId === targetId) throw elementError("内容已在目标空间", 400);
         get(sourceId); get(targetId);
         const encoded = JSON.stringify(ids);
-        const rows = db.prepare(`SELECT id FROM elements WHERE id IN(SELECT value FROM json_each(?)) AND space_id=? AND deleted_at IS NULL AND kind IN(1,2,5)`)
+        const rows = db.prepare(`SELECT id FROM elements WHERE id IN(SELECT value FROM json_each(?)) AND space_id=? AND deleted_at IS NULL AND kind IN(1,2,5,6)`)
           .all(encoded, sourceId);
         if (rows.length !== ids.length) throw elementError("部分内容不存在、已删除或不在当前空间", 409);
+
+        // Album members follow the album in the same move transaction.
+        let moveIds = ids;
+        if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='album_items'").get()) {
+          const members = db.prepare(`SELECT image_id AS id FROM album_items WHERE album_id IN(SELECT value FROM json_each(?))`).all(encoded).map((r) => r.id);
+          moveIds = [...new Set([...ids, ...members])];
+        }
+        const moveEncoded = JSON.stringify(moveIds);
+        const encodedAll = moveEncoded;
 
         // Remap tags used by these elements (and their video markers) into the target space.
         const tagIds = db.prepare(`SELECT DISTINCT tag_id AS id FROM element_tags WHERE element_id IN(SELECT value FROM json_each(?))
@@ -121,7 +130,7 @@ export function createSpaceRepository(db) {
             WHERE m.video_id IN(SELECT value FROM json_each(?))
           UNION SELECT DISTINCT tag_id FROM tag_relations WHERE source_id IN(SELECT value FROM json_each(?))
           UNION SELECT DISTINCT b.tag_id FROM organization_bindings b WHERE b.element_id IN(SELECT value FROM json_each(?)) AND b.tag_id IS NOT NULL`)
-          .all(encoded, encoded, encoded, encoded);
+          .all(encodedAll, encodedAll, encodedAll, encodedAll);
         const tagMap = new Map();
         for (const { id: tagId } of tagIds) {
           const tag = db.prepare("SELECT id,name,normalized_name,space_id FROM tags WHERE id=?").get(tagId);
@@ -132,23 +141,23 @@ export function createSpaceRepository(db) {
           if (from === to) continue;
           db.prepare(`UPDATE element_tags SET tag_id=? WHERE element_id IN(SELECT value FROM json_each(?)) AND tag_id=?
             AND NOT EXISTS(SELECT 1 FROM element_tags et WHERE et.element_id=element_tags.element_id AND et.tag_id=?)`)
-            .run(to, encoded, from, to);
-          db.prepare("DELETE FROM element_tags WHERE element_id IN(SELECT value FROM json_each(?)) AND tag_id=?").run(encoded, from);
+            .run(to, encodedAll, from, to);
+          db.prepare("DELETE FROM element_tags WHERE element_id IN(SELECT value FROM json_each(?)) AND tag_id=?").run(encodedAll, from);
           if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='video_marker_tags'").get()) {
             db.prepare(`UPDATE video_marker_tags SET tag_id=? WHERE marker_id IN(
               SELECT id FROM video_markers WHERE video_id IN(SELECT value FROM json_each(?))) AND tag_id=?
               AND NOT EXISTS(SELECT 1 FROM video_marker_tags x WHERE x.marker_id=video_marker_tags.marker_id AND x.tag_id=?)`)
-              .run(to, encoded, from, to);
+              .run(to, encodedAll, from, to);
             db.prepare(`DELETE FROM video_marker_tags WHERE marker_id IN(
-              SELECT id FROM video_markers WHERE video_id IN(SELECT value FROM json_each(?))) AND tag_id=?`).run(encoded, from);
+              SELECT id FROM video_markers WHERE video_id IN(SELECT value FROM json_each(?))) AND tag_id=?`).run(encodedAll, from);
           }
           db.prepare(`UPDATE tag_relations SET tag_id=? WHERE source_id IN(SELECT value FROM json_each(?)) AND tag_id=?
             AND NOT EXISTS(SELECT 1 FROM tag_relations r WHERE r.source_id=tag_relations.source_id AND r.tag_id=? AND r.name=tag_relations.name)`)
-            .run(to, encoded, from, to);
-          db.prepare("DELETE FROM tag_relations WHERE source_id IN(SELECT value FROM json_each(?)) AND tag_id=?").run(encoded, from);
+            .run(to, encodedAll, from, to);
+          db.prepare("DELETE FROM tag_relations WHERE source_id IN(SELECT value FROM json_each(?)) AND tag_id=?").run(encodedAll, from);
           if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='organization_bindings'").get()) {
             db.prepare("UPDATE organization_bindings SET tag_id=? WHERE element_id IN(SELECT value FROM json_each(?)) AND tag_id=?")
-              .run(to, encoded, from);
+              .run(to, encodedAll, from);
           }
         }
 
@@ -161,10 +170,10 @@ export function createSpaceRepository(db) {
           AND NOT (
             (source_id IN(SELECT value FROM json_each(?)) AND target_id IN(SELECT id FROM elements WHERE space_id=? AND deleted_at IS NULL))
             OR (target_id IN(SELECT value FROM json_each(?)) AND source_id IN(SELECT id FROM elements WHERE space_id=? AND deleted_at IS NULL))
-          )`).all(encoded, encoded, encoded, encoded, encoded, targetId, encoded, targetId);
+          )`).all(encodedAll, encodedAll, encodedAll, encodedAll, encodedAll, targetId, encodedAll, targetId);
         // Simpler: after move, delete any relation whose ends differ in space_id.
         db.prepare("UPDATE elements SET space_id=?, updated_at=? WHERE id IN(SELECT value FROM json_each(?))")
-          .run(targetId, new Date().toISOString(), encoded);
+          .run(targetId, new Date().toISOString(), encodedAll);
         const dropped = db.prepare(`SELECT id FROM element_relations WHERE
           (SELECT space_id FROM elements WHERE id=source_id) != (SELECT space_id FROM elements WHERE id=target_id)`).all();
         for (const { id } of dropped) {
@@ -173,10 +182,10 @@ export function createSpaceRepository(db) {
           db.prepare("DELETE FROM element_relations WHERE id=?").run(id);
         }
         // Canvas is per-element; remove nodes from the source space canvas.
-        db.prepare("DELETE FROM canvas_positions WHERE element_id IN(SELECT value FROM json_each(?))").run(encoded);
+        db.prepare("DELETE FROM canvas_positions WHERE element_id IN(SELECT value FROM json_each(?))").run(encodedAll);
         // Tag relations whose tag ended up in a different space than the source element should go.
         db.prepare(`DELETE FROM tag_relations WHERE source_id IN(SELECT value FROM json_each(?))
-          AND (SELECT space_id FROM tags WHERE id=tag_id) != (SELECT space_id FROM elements WHERE id=source_id)`).run(encoded);
+          AND (SELECT space_id FROM tags WHERE id=tag_id) != (SELECT space_id FROM elements WHERE id=source_id)`).run(encodedAll);
 
         return {
           ok: true,

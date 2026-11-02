@@ -18,7 +18,7 @@ Grok 认证修正：不能仅凭 auth.json 的 expires_at 判定当前 CLI 登�
 
 重启 Jiva 后，在「设置 → 外观与浏览」开启「显示额度浮动条」，选择左下或右下。默认关闭。「设置 → Agent 连接 → 账号额度来源」可逐家检测，即使浮动条关闭也能手动读取。
 
-Codex、Grok 复用工作台的程序及认证来源配置，但额度读取使用自己拥有的临时连接，不借用或关闭工作台会话。Gemini 使用当前用户已打开的 Antigravity 桌面端，与 ACP 会话的身份分开；不需要另装 agy。
+Codex、Grok 复用工作台的程序及认证来源配置，但额度读取使用自己拥有的临时连接，不借用或关闭工作台会话。Gemini 优先复用当前用户的 Antigravity ACP 登录凭据，直接读取 Google 额度；桌面端和 ACP 进程均不需要保持运行。不需要另装 agy。只有本机没有 ACP 凭据文件时，才尝试桌面来源。
 
 ## 真实来源验收
 
@@ -26,15 +26,27 @@ Codex、Grok 复用工作台的程序及认证来源配置，但额度读取使�
 | --- | --- | --- | --- |
 | Codex / ChatGPT | codex-cli 0.159.0 | app-server `account/rateLimits/read` | 多 limit 结构、300 / 10080 分钟窗口、Unix 秒转换；由 workspaceRouting 与完整读取回显确认账号，以本地盐 HMAC 保存身份 |
 | Grok Build | 1.0.70 (f50904eaee6c) | `grok agent stdio` initialize 后 `_x.ai/billing` | 每周 creditUsagePercent、周期、预付余额；金额按参考协议的 cents 保留，余额不冒充百分比。RPC 未回显稳定 principal，身份保守标记 unverified |
-| Gemini · Antigravity | 桌面端 2.28.2 | 同用户 language_server 的 loopback HTTPS `RetrieveUserQuotaSummary` | Gemini 和 Claude/GPT 各有 weekly、5h 共享桶；实测 remainingFraction 在桶顶层。没有稳定账号回显，身份标记 unverified |
+| Gemini · Antigravity | ACP 登录 1.4.5 | OAuth 换取 access token 后，调用 Google `retrieveUserQuotaSummary` | 2026-11-01 实测 Gemini 和 Claude/GPT 各有 weekly、5h 共享桶；userinfo 验证身份，使用本地盐 HMAC 保存账号键。桌面接口保留为无 ACP 凭据时的备用 |
 
 Antigravity Windows 探针只枚举相关 language_server，核对当前用户和 Antigravity 安装路径，按 PID 筛选监听端口；CSRF 只在 agent 内存中使用。自签名证书例外仅用于该 loopback 请求，不修改全局 TLS。多个候选来源时拒绝猜选。
 
-没有安装或捆绑第三方探针。没有发送模型推理、自动登录、打开登录浏览器、刷新 refresh token、读取浏览器 cookie 或改动 token_usage。
+没有安装或捆绑第三方探针，没有发送模型推理、自动登录、打开登录浏览器、读取浏览器 cookie 或改动 token_usage。后台额度使用既有 ACP refresh token 向 Google 官方 OAuth 接口获取 access token，只在内存中使用，不改写凭据文件。
 
-本机没有官方 agy CLI，因此本次实际启用并验收的是 Windows 桌面来源。**agy print 备用采集和其路径编辑没有启用，也没有宣称通过验收**；后端配置预留了独立 CLI 路径字段。Grok 的 HTTP 备用路线同样没有启用，当前实测 RPC 已可完整读取。
+本机没有官方 agy CLI，首版仅验收过 Windows 桌面来源；后续已增加并实测 ACP 凭据直连。**agy print 备用采集和其路径编辑没有启用，也没有宣称通过验收**；后端配置预留了独立 CLI 路径字段。Grok 的 HTTP 备用路线同样没有启用，当前实测 RPC 已可完整读取。
 
 未验证身份的每个临时来源会话使用独立随机 key，读取前解除旧会话的当前绑定；其历史不会被拼成稳定账号历史。其身份变化无法可靠观测，因此在新一次读取失败时可能不再展示前一会话旧值，这是主动避免错误归属的保守处理。
+
+## Antigravity 后台读取修正（2026-11-01）
+
+- 从 `~/.gemini/antigravity-acp/acp_token.json` 读取既有登录；凭据文件最多 64 KiB。固定调用 Google 官方 OAuth/userinfo/额度地址，不采用文件里的 `token_uri`，不跟随重定向，不输出凭据或原始错误。
+- 使用与工作台已验证版本一致的 `antigravity/acp/1.4.5` 请求标识，先读取 daily Cloud Code summary，再按需尝试 Cloud Code summary。至少存在一个有实测百分比的 `gemini-*` 桶才算有效，单独返回 Claude/GPT 桶不算 Gemini 成功。
+- 已有 ACP 凭据具有账号选择权：授权失败、网络失败、缺少 Gemini 桶时明确失败，不转用可能属于另一账号的桌面来源。只有凭据文件不存在时，才使用原桌面探针。此版没有增加官方 agy CLI 路径。
+- Google userinfo 可用时保存 HMAC 身份与脱敏邮箱；不可用时保持身份未验证，使用独立会话键。请求结束前重读凭据，发生切换或删除则丢弃结果。每个网络请求最多 10 秒、响应最多 1 MiB，并遵守来源刷新取消信号。
+- 空桶不再被记为成功，旧式模型响应和含未知百分比的分组响应标记 partial。升级来源指纹，避免继承旧桌面来源的当前状态。
+- 真实默认入口实测：身份 verified，Gemini weekly 97.713655%、5h 98.22982%，Claude/GPT weekly/5h 均为 100%。该路径未调用桌面探针，不依赖其进程状态。另通过真实 quotaService + 内存数据库验证 state=ok，服务重建后账号键和 lastSuccessAt 均保留。
+- 定向额度测试 19 项及额度 UI 回归 1 项通过，前端构建通过。全仓架构检查仍报告额度改动以外的现有设计系统违规。
+
+实现依据：[t3code 探针](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/provider/antigravityUsageLimits.ts)、[请求标识与缺失 Gemini 分组的实测报告](https://github.com/pingdotgg/t3code/issues/24800)。后者仅作为线索，本机完整额度已另行验证。
 
 ## 实施内容
 

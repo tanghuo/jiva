@@ -110,11 +110,11 @@ test("new mixed content can be saved as materials without changing the category 
   await material.check();
   await dialog.getByLabel("文字", { exact: true }).fill("可反复使用的人物设定");
   const image = await sharp({ create: { width: 120, height: 160, channels: 3, background: "#bca5ad" } }).png().toBuffer();
-  await page.getByLabel("导入图片或视频文件").setInputFiles([
+  await page.getByLabel("导入图片、视频或文本文件").setInputFiles([
     { name: "人物参考.png", mimeType: "image/png", buffer: image },
     { name: "动作参考.webm", mimeType: "video/webm", buffer: await readFile(new URL("../fixtures/sample.webm", import.meta.url)) },
   ]);
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.waitFor({ state: "detached" });
   await page.locator(".wiki-card.has-material").nth(2).waitFor();
   assert.equal(await page.locator(".wiki-card.has-material").count(), 3);
@@ -422,6 +422,48 @@ test("detail previous and next follow filtered pages and return directly to the 
   assert.equal(await search.inputValue(), "导航测试");
   await page.getByRole("button", { name: `打开内容：${last.body}`, exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "打开内容：不应出现在导航中的内容", exact: true }).count(), 0);
+});
+
+test("image detail zooms gradually and allows free panning on both axes", options, async (t) => {
+  const { page, app } = await setup(t);
+  const bytes = await sharp({ create: { width: 480, height: 360, channels: 3, background: "#74829b" } }).png().toBuffer();
+  const response = await fetch(new URL("api/images", app.url), { method: "POST", headers: { "x-file-name": "free-pan.png" }, body: bytes });
+  assert.equal(response.status, 201);
+  await page.reload();
+  await page.getByRole("button", { name: "打开内容：free-pan.png", exact: true }).click();
+  const image = page.locator(".wiki-original img");
+  await page.waitForFunction(() => {
+    const img = document.querySelector(".wiki-original img");
+    return img?.complete && img.naturalWidth > 0 && getComputedStyle(img).opacity === "1";
+  });
+  await image.hover();
+  await page.mouse.wheel(0, -100);
+  await page.locator(".wiki-original img.is-zoomed").waitFor();
+  const scale = await image.evaluate((img) => new DOMMatrix(getComputedStyle(img).transform).a);
+  assert.ok(scale >= 1.2 && scale <= 1.25, `Expected a moderate zoom step, got ${scale}`);
+  const rect = await image.boundingBox();
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + rect.width / 2 + 140, rect.y + rect.height / 2 + 90, { steps: 10 });
+  await page.mouse.up();
+  assert.equal(await image.evaluate((img) => {
+    const matrix = new DOMMatrix(getComputedStyle(img).transform);
+    return Math.abs(matrix.m41 - 140) < 2 && Math.abs(matrix.m42 - 90) < 2;
+  }), true, "Small images should not be pinned to the viewport center after zooming");
+  const panned = await image.boundingBox();
+  const anchor = { x: panned.x + panned.width * .6, y: panned.y + panned.height * .4, u: .6, v: .4 };
+  await page.mouse.move(anchor.x, anchor.y);
+  for (const delta of [-100, 100]) {
+    const previous = await image.getAttribute("style");
+    await page.mouse.wheel(0, delta);
+    await page.waitForFunction((style) => document.querySelector(".wiki-original img").getAttribute("style") !== style, previous);
+    assert.equal(await image.evaluate((img, { x, y, u, v }) => {
+      const rect = img.getBoundingClientRect();
+      return Math.abs(rect.left + u * rect.width - x) < 2 && Math.abs(rect.top + v * rect.height - y) < 2;
+    }, anchor), true, "The source-image point under the mouse should stay fixed during zoom");
+  }
+  await page.getByRole("button", { name: "恢复全图", exact: true }).click();
+  assert.equal(await image.evaluate((img) => getComputedStyle(img).transform), "matrix(1, 0, 0, 1, 0, 0)");
 });
 
 test("detail navigation keeps the current image until data and the next original are ready, and retries failures", options, async (t) => {
@@ -1236,7 +1278,7 @@ for (const missingPaste of [false, true]) test(`Ctrl+V opens image drafts before
   const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.locator("img").waitFor();
   assert.equal(await dialog.locator("img").count(), 1);
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   await page.getByRole("heading", { name: "全部内容", exact: true }).click();
   await page.keyboard.press("Control+v");
@@ -1266,8 +1308,9 @@ test("Clipboard images and dropped files join the same draft as consecutive inde
   assert.equal(await sendImageEvent(page, "paste", image, "粘贴图片.png"), false);
   const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByRole("img", { name: "粘贴图片.png", exact: true }).waitFor();
-  await page.waitForFunction(() => document.activeElement?.matches('dialog textarea'));
-  assert.equal(await dialog.getByLabel("文字", { exact: true }).evaluate((node) => node === document.activeElement), true);
+  assert.equal(await dialog.locator(".wiki-content-draft").count(), 1);
+  assert.equal(await dialog.getByLabel("文字", { exact: true }).count(), 0);
+  await dialog.getByRole("button", { name: "添加文字", exact: true }).click();
   await dialog.getByLabel("本次标签", { exact: true }).fill("仪玄");
   await dialog.getByLabel("本次标签", { exact: true }).press("Enter");
   await dialog.getByLabel("文字", { exact: true }).fill("第一段文字\n  保留空格");
@@ -1290,7 +1333,7 @@ test("Clipboard images and dropped files join the same draft as consecutive inde
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await dialog.locator(".wiki-form-fields").evaluate((node) => { node.scrollTop = 0; });
   await page.screenshot({ path: "data/wiki-mixed-composer-mobile.png", fullPage: true, animations: "disabled" });
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   const data = await (await fetch(new URL("api/elements", app.url))).json();
   assert.equal(data.pagination.total, 5);
@@ -1312,16 +1355,16 @@ test("A mixed save retains failed text for editing and retry without repeating c
   await dialog.getByRole("button", { name: "添加文字", exact: true }).click();
   await dialog.getByLabel("文字", { exact: true }).last().fill("待重试文字");
   const image = await sharp({ create: { width: 8, height: 10, channels: 3, background: "#bca5ad" } }).png().toBuffer();
-  await page.getByLabel("导入图片或视频文件").setInputFiles({ name: "重试样本.png", mimeType: "image/png", buffer: image });
+  await page.getByLabel("导入图片、视频或文本文件").setInputFiles({ name: "重试样本.png", mimeType: "image/png", buffer: image });
   let fail = true, textCalls = [], imageCalls = 0;
-  await page.route("**/api/elements", (route) => {
+  await page.route(/\/api\/elements(?:\?.*)?$/, (route) => {
     if (route.request().method() !== "POST") return route.continue();
     const body = route.request().postDataJSON().body; textCalls.push(body);
     if (body === "待重试文字" && fail) { fail = false; return route.fulfill({ status: 503, json: { error: "模拟文字保存失败" } }); }
     return route.continue();
   });
-  await page.route("**/api/images", (route) => { imageCalls++; return route.continue(); });
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await page.route(/\/api\/images(?:\?.*)?$/, (route) => { imageCalls++; return route.continue(); });
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.getByText("模拟文字保存失败", { exact: true }).waitFor();
   await dialog.getByText(/1 项未保存，草稿已保留/).waitFor();
   assert.equal((await (await fetch(new URL("api/elements", app.url))).json()).pagination.total, 2);
@@ -1348,7 +1391,7 @@ test("One composer saves interleaved image and text elements with common and ind
   await dialog.getByLabel("文字", { exact: true }).fill("保留\n  文字草稿");
   await dialog.getByLabel("本次标签", { exact: true }).fill("人物 A");
   const picker = page.waitForEvent("filechooser");
-  await dialog.getByRole("button", { name: "导入图片或视频", exact: true }).click();
+  await dialog.getByRole("button", { name: "导入文件", exact: true }).click();
   const image = await sharp({ create: { width: 40, height: 60, channels: 3, background: "#a5bd9c" } }).png().toBuffer();
   await (await picker).setFiles({ name: "从统一入口导入.png", mimeType: "image/png", buffer: image });
   await dialog.getByText("从统一入口导入.png", { exact: true }).waitFor();
@@ -1366,7 +1409,7 @@ test("One composer saves interleaved image and text elements with common and ind
   await dialog.getByRole("button", { name: "移除待保存内容 4", exact: true }).click();
   assert.equal((await (await fetch(new URL("api/elements", app.url))).json()).pagination.total, 0);
   await page.screenshot({ path: "data/wiki-add-content.png", fullPage: true });
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "打开内容：从统一入口导入.png", exact: true }).waitFor();
   const data = await (await fetch(new URL("api/elements", app.url))).json();
@@ -1413,7 +1456,7 @@ test("Tag input turns Enter into inline chips, keeps focus, respects IME and wra
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: "data/wiki-tag-chips-mobile.png", fullPage: true, animations: "disabled" });
   await input.fill("草稿标签");
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   const saved = (await (await fetch(new URL("api/elements", app.url))).json()).elements[0];
   assert.deepEqual(saved.tags, ["仪玄", "光影", longTag, "草稿标签"]);
@@ -1586,7 +1629,7 @@ test("Batch import waits for confirmation, assigns tags, reuses duplicates, dist
   const image = await sharp({ create: { width: 40, height: 60, channels: 3, background: "#a5bd9c" } }).png().toBuffer();
   const different = await sharp({ create: { width: 60, height: 60, channels: 3, background: "#bd9caa" } }).png().toBuffer();
   const file = (name, buffer) => ({ name, mimeType: "image/png", buffer });
-  const fileInput = page.getByLabel("导入图片或视频文件");
+  const fileInput = page.getByLabel("导入图片、视频或文本文件");
   const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await fileInput.setInputFiles([file("共同名字.png", image), file("第二张.png", different)]);
   await dialog.waitFor();
@@ -1597,21 +1640,21 @@ test("Batch import waits for confirmation, assigns tags, reuses duplicates, dist
   await dialog.getByLabel("本次标签", { exact: true }).fill("人物 A");
   await dialog.getByLabel("本次标签", { exact: true }).press("Enter");
   await dialog.getByLabel("本次标签", { exact: true }).fill("参考图");
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await page.getByRole("button", { name: "打开内容：第二张.png", exact: true }).waitFor();
   let data = await (await fetch(new URL("api/elements", app.url))).json();
   assert.equal(data.pagination.total, 2);
   assert.ok(data.elements.every((element) => element.tags.includes("人物 A") && element.tags.includes("参考图")));
   await fileInput.setInputFiles(file("换个名字.png", image));
   await dialog.getByLabel("本次标签", { exact: true }).fill("新标签");
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await page.getByText("已复用已有图片，标签已合并", { exact: true }).waitFor();
   await page.getByRole("button", { name: "查看保存结果：换个名字.png", exact: true }).click();
   await page.getByRole("heading", { name: "共同名字.png", exact: true }).waitFor();
   assert.deepEqual(await page.locator(".wiki-detail-tags .wiki-tag").allTextContents(), ["人物 A", "参考图", "新标签"]);
   await fileInput.setInputFiles(file("详情页再次导入.png", image));
   await dialog.getByLabel("本次标签", { exact: true }).fill("详情补充");
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await page.locator(".wiki-detail-tags").getByText("详情补充", { exact: true }).waitFor();
   await page.getByRole("button", { name: "编辑标签", exact: true }).click();
   let editor = page.getByRole("dialog", { name: "编辑标签", exact: true });
@@ -1622,13 +1665,13 @@ test("Batch import waits for confirmation, assigns tags, reuses duplicates, dist
   await page.getByRole("button", { name: "返回", exact: true }).click();
   const third = await sharp(image).rotate(90).png().toBuffer();
   await fileInput.setInputFiles(file("共同名字.png", third));
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await page.getByText("同名不同内容，已另存", { exact: true }).waitFor();
   await page.locator(".wiki-page-header").getByRole("button", { name: "添加内容", exact: true }).click();
   editor = page.getByRole("dialog", { name: "添加内容", exact: true });
   await editor.getByLabel("文字", { exact: true }).fill("a portrait with soft light");
   await editor.getByLabel("本次标签", { exact: true }).fill("人物 A, Prompt");
-  await editor.getByRole("button", { name: "保存全部", exact: true }).click();
+  await editor.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await editor.waitFor({ state: "hidden" });
   await page.getByRole("region", { name: "内容详情", exact: true }).getByText("提示词", { exact: true }).waitFor();
   const savedText = (await (await fetch(new URL("api/elements", app.url))).json()).elements.find((element) => element.kind === "text");
@@ -1661,18 +1704,18 @@ test("Tags and import dialog fit a narrow viewport; invalid tags stay editable a
   const { page, app } = await setup(t);
   await page.setViewportSize({ width: 390, height: 844 });
   const image = await sharp({ create: { width: 4, height: 6, channels: 3, background: "#9cabaa" } }).png().toBuffer();
-  await page.getByLabel("导入图片或视频文件").setInputFiles({ name: "很长的文件名".repeat(8) + ".png", mimeType: "image/png", buffer: image });
+  await page.getByLabel("导入图片、视频或文本文件").setInputFiles({ name: "很长的文件名".repeat(8) + ".png", mimeType: "image/png", buffer: image });
   const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   const input = dialog.getByLabel("本次标签", { exact: true });
   await input.fill("长".repeat(61));
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.getByRole("alert").waitFor();
   assert.equal((await (await fetch(new URL("api/elements", app.url))).json()).pagination.total, 0);
   await input.fill("标签".repeat(30));
   await input.press("Enter");
   assert.equal(await page.evaluate(() => document.querySelector('dialog').scrollWidth <= document.querySelector('dialog').clientWidth + 1), true);
   await page.screenshot({ path: "data/wiki-tags-import-mobile.png", fullPage: true });
-  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   await page.getByRole("button", { name: /打开内容：很长的文件名/ }).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -1681,8 +1724,8 @@ test("Tags and import dialog fit a narrow viewport; invalid tags stay editable a
 test("Wiki UI completes image/text association, copy, edit, navigation, detach and trash/restore", options, async (t) => {
   const { page } = await setup(t);
   const image = await sharp({ create: { width: 40, height: 60, channels: 3, background: "#a5bd9c" } }).png().toBuffer();
-  await page.getByLabel("导入图片或视频文件").setInputFiles({ name: "人物练习.png", mimeType: "image/png", buffer: image });
-  await page.getByRole("dialog", { name: "添加内容", exact: true }).getByRole("button", { name: "保存全部", exact: true }).click();
+  await page.getByLabel("导入图片、视频或文本文件").setInputFiles({ name: "人物练习.png", mimeType: "image/png", buffer: image });
+  await page.getByRole("dialog", { name: "添加内容", exact: true }).getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   await page.getByRole("button", { name: "打开内容：人物练习.png", exact: true }).click();
   await page.getByRole("button", { name: "添加关联", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "添加关联", exact: true });
@@ -1810,11 +1853,11 @@ test("Mixed drafts keep per-item failures and block closing or navigation while 
   t.after(() => release());
   await page.route("**/api/images", async (route) => { await held; await route.continue(); });
   const image = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#999999" } }).png().toBuffer();
-  await page.getByLabel("导入图片或视频文件").setInputFiles([
+  await page.getByLabel("导入图片、视频或文本文件").setInputFiles([
     { name: "正常.png", mimeType: "image/png", buffer: image },
     { name: "损坏.png", mimeType: "image/png", buffer: Buffer.from("bad") },
   ]);
-  await page.getByRole("dialog", { name: "添加内容", exact: true }).getByRole("button", { name: "保存全部", exact: true }).click();
+  await page.getByRole("dialog", { name: "添加内容", exact: true }).getByRole("button", { name: /^保存(?:全部)?$/, exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByText("正在保存这项内容…", { exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelector(".wiki-agent-entry").getAttribute("aria-disabled") === "true");
@@ -2041,4 +2084,69 @@ test("image previews preload and decode beyond the viewport before rapid scrolli
     const rect = card.getBoundingClientRect(); return rect.bottom > 0 && rect.top < innerHeight;
   }).every((card) => !card.classList.contains("is-loading")));
   t.diagnostic(JSON.stringify(await page.evaluate(() => ({ scrollY, cards: document.querySelectorAll('.wiki-card').length, longTasks: window.scrollLongTasks }))));
+});
+
+
+test("single Markdown paste previews, edits and saves one element, then supports batch additions", options, async (t) => {
+  const { page, app } = await setup(t);
+  const markdown = "# 粘贴文档\n\n**重点**\n\n| A | B |\n|---|---|\n| 1 | 2 |";
+  await page.getByRole("heading", { name: "全部内容", exact: true }).waitFor();
+  await page.evaluate(body => {
+    const data = new DataTransfer();
+    data.items.add(new File([body], "说明.md", { type: "" }));
+    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  }, markdown);
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
+  await dialog.getByRole("heading", { name: "粘贴文档", exact: true }).waitFor();
+  assert.equal(await dialog.locator(".wiki-content-draft").count(), 1);
+  assert.equal(await dialog.locator(".wiki-draft-markdown table").count(), 1);
+  assert.equal(await dialog.getByRole("button", { name: "保存", exact: true }).isEnabled(), true);
+  await dialog.getByRole("button", { name: "编辑", exact: true }).click();
+  assert.equal(await dialog.getByLabel("文字", { exact: true }).inputValue(), markdown);
+  await dialog.getByLabel("文字", { exact: true }).fill(markdown + "\n\n修改内容");
+  await dialog.getByRole("button", { name: "预览", exact: true }).click();
+  await dialog.getByText("修改内容", { exact: true }).waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+  await page.screenshot({ path: "data/wiki-single-markdown-mobile.png", fullPage: true });
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await dialog.waitFor({ state: "hidden" });
+  const result = await (await fetch(new URL("api/elements", app.url))).json();
+  assert.equal(result.pagination.total, 1);
+  assert.equal(result.elements[0].body, markdown + "\n\n修改内容");
+
+  await page.evaluate(() => {
+    const data = new DataTransfer(); data.setData("text/plain", "# 普通粘贴");
+    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await dialog.getByRole("heading", { name: "普通粘贴", exact: true }).waitFor();
+  await dialog.getByRole("button", { name: "添加文字", exact: true }).click();
+  await dialog.getByLabel("文字", { exact: true }).fill("第二项");
+  assert.equal(await dialog.locator(".wiki-content-draft").count(), 2);
+  await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
+  await dialog.waitFor({ state: "hidden" });
+  assert.equal((await (await fetch(new URL("api/elements", app.url))).json()).pagination.total, 3);
+});
+
+test("Markdown file import reports oversized and invalid UTF-8 files without saving truncated text", options, async (t) => {
+  const { page, app } = await setup(t);
+  await page.getByRole("heading", { name: "全部内容", exact: true }).waitFor();
+  await page.getByLabel("导入图片、视频或文本文件").setInputFiles([
+    { name: "过长.md", mimeType: "text/markdown", buffer: Buffer.from("长".repeat(12001)) },
+    { name: "编码.md", mimeType: "text/markdown", buffer: Buffer.from([255, 254, 0]) },
+  ]);
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
+  await dialog.getByText(/无法导入 过长.md/).waitFor();
+  await dialog.getByText(/无法导入 编码.md/).waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "重试未保存项", exact: true }).isDisabled(), true);
+  assert.equal((await (await fetch(new URL("api/elements", app.url))).json()).pagination.total, 0);
+  await page.getByLabel("导入图片、视频或文本文件").setInputFiles({ name: "可读.md", mimeType: "text/markdown", buffer: Buffer.from("# 可保存") });
+  await dialog.getByRole("heading", { name: "可保存", exact: true }).waitFor();
+  await dialog.getByRole("button", { name: "重试未保存项", exact: true }).click();
+  await dialog.getByText(/2 项未保存/).waitFor();
+  assert.equal((await (await fetch(new URL("api/elements", app.url))).json()).pagination.total, 1);
+  await dialog.getByRole("button", { name: "移除待保存内容 1", exact: true }).click();
+  await dialog.getByRole("button", { name: "移除待保存内容 1", exact: true }).click();
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await dialog.waitFor({ state: "hidden" });
 });

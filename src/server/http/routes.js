@@ -11,8 +11,9 @@ import { handleLocalAuthRoute } from './localAuthRoutes.js';
 import { handleAgentWorkbenchRoute } from './agentWorkbenchRoutes.js';
 import { handleAionuiExperimentRoute } from './aionuiExperimentRoutes.js';
 import { handleQuotaRoute } from './quotaRoutes.js';
+import { handleMagnetImportRoute } from './magnetImportRoutes.js';
 
-export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, workflow, agentWorkbench, agentTasks, aionuiExperiment, quota, usage, instance, authentication, rendererDist, access = "local" }) {
+export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, workflow, agentWorkbench, agentTasks, aionuiExperiment, quota, magnetImports, usage, instance, authentication, rendererDist, access = "local" }) {
   const routes = new Map([
     ["GET /api/token-usage", async (_req, res, url) => {
       const days = Number(url.searchParams.get("days") ?? 7);
@@ -92,6 +93,7 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
         throw httpError(409, "Server instance changed; reconnect before retrying");
       }
       if (quota && await handleQuotaRoute(quota, req, res, url, access)) return;
+      if (magnetImports && await handleMagnetImportRoute(magnetImports, req, res, url, access)) return;
       if (aionuiExperiment && await handleAionuiExperimentRoute(aionuiExperiment, req, res, url, access)) return;
       if (workflow && await handleWorkflowRoute(workflow, req, res, url, access)) return;
       if (agentWorkbench && await handleAgentWorkbenchRoute(agentWorkbench, req, res, url, access, agentTasks)) return;

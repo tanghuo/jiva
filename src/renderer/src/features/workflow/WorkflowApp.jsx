@@ -293,6 +293,7 @@ export default function WorkflowApp() {
       </div> : undefined} />
     {error && <p className="workflow-error" role="alert">{error}</p>}{notice && <p className="workflow-notice" role="status">{notice}</p>}
     {!workflow ? <section className="workflow-home" aria-label="工作流首页">
+      <a className="workflow-template" href="#imports"><strong>磁力导入图集</strong><span>内置模板 · 115 获取文件，预览并确认导入</span></a>
       <section className="workflow-list" aria-label="我的工作流">
         <header className="workflow-list-head"><h2>我的工作流</h2></header>
         <div className="workflow-card-grid">{list.filter((item) => showArchived || !item.archivedAt).map((item) => (

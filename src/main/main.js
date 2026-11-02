@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, dialog, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, WebContentsView, dialog, ipcMain, Menu, Notification, shell } from "electron";
 import path from "node:path";
 import { startBackendProcess } from "./backendProcess.js";
 import { copyVideoFile, prepareVideoFile, videoDownloadUrl } from "./videoClipboard.js";
@@ -7,16 +7,21 @@ import { createQuitController } from './quitController.js';
 import { connect } from '../cli/client.js';
 import { createAionuiWindow } from './aionuiWindow.js';
 import { createAionuiView } from './aionuiView.js';
+import { notificationAppId, registerNotificationIdentity } from './notificationIdentity.js';
+import { clipboardFolderFiles } from './folderClipboard.js';
 
 let backend;
 let mainWindow;
 let quitController;
 let quitting = false;
 let windowCreation;
+let notificationIdentity;
 const smoke = process.argv.includes("--smoke");
 if (smoke) {
   app.disableHardwareAcceleration();
 }
+// Unpackaged Electron drops Windows toasts unless the app id is set before ready.
+if (process.platform === "win32") app.setAppUserModelId(notificationAppId);
 
 async function createMainWindow() {
   const appDir = app.getAppPath();
@@ -121,12 +126,44 @@ async function createMainWindow() {
     return result.canceled ? null : result.filePaths[0];
   });
   let settingWallpaper = false;
+  let readingFolders = false;
+  ipcMain.removeHandler('wiki:clipboard-folders');
+  ipcMain.handle('wiki:clipboard-folders', async event => {
+    if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame ||
+        new URL(event.senderFrame.url).origin !== pageOrigin) throw new Error('此页面无法读取本机剪贴板');
+    if (readingFolders) throw new Error('正在读取文件夹，请稍候。');
+    readingFolders = true;
+    try { return await clipboardFolderFiles(); }
+    finally { readingFolders = false; }
+  });
   ipcMain.removeHandler("wiki:pick-project-directory");
   ipcMain.handle("wiki:pick-project-directory", async (event) => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame ||
         new URL(event.senderFrame.url).origin !== pageOrigin) throw new Error("此页面无法选择项目目录");
     const result = await dialog.showOpenDialog(window, { title: "选择项目目录", properties: ["openDirectory"] });
     return result.canceled ? null : result.filePaths[0];
+  });
+  ipcMain.removeHandler("agent:notify");
+  ipcMain.handle("agent:notify", async (event, value) => {
+    if (process.platform !== "win32" || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame ||
+        new URL(event.senderFrame.url).origin !== pageOrigin || window.isDestroyed() || window.isFocused() || !Notification.isSupported()) return { ok: false };
+    const title = typeof value?.title === "string" ? value.title.trim().slice(0, 80) : "";
+    const body = typeof value?.body === "string" ? value.body.trim().slice(0, 180) : "";
+    const sessionId = Number(value?.sessionId);
+    if (!title || !body || !Number.isSafeInteger(sessionId) || sessionId < 1) return { ok: false };
+    try {
+      const notification = new Notification({ title, body });
+      notification.on("click", () => {
+        if (window.isDestroyed()) return;
+        if (window.isMinimized()) window.restore();
+        window.show();
+        window.focus();
+        const hash = `#workbench?session=${sessionId}`;
+        void window.webContents.executeJavaScript(`if (location.hash !== ${JSON.stringify(hash)}) location.hash = ${JSON.stringify(hash)};`).catch(() => {});
+      });
+      notification.show();
+      return { ok: true };
+    } catch { return { ok: false }; }
   });
   ipcMain.removeHandler("wiki:set-wallpaper");
   ipcMain.handle("wiki:set-wallpaper", async (event, elementId) => {
@@ -244,6 +281,10 @@ async function handleStartupError(error) {
 
 async function showMainWindow() {
   await app.whenReady();
+  notificationIdentity ||= registerNotificationIdentity(path.join(app.getAppPath(),
+    app.isPackaged ? 'dist/renderer/brand/jiva.ico' : 'src/renderer/public/brand/jiva.ico'))
+    .catch(error => console.error('Could not register Jiva notification identity', error));
+  await notificationIdentity;
   if (quitting) return;
   if (!mainWindow || mainWindow.isDestroyed()) {
     // Startup and repeated launches must share the same backend/window creation.

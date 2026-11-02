@@ -30,4 +30,6 @@ tools/th-skill/
 
 # OS/editor noise
 .DS_Store
+src/server/adapters/115bridge/115bridge.exe
+src/server/adapters/115bridge/115bridge
 Thumbs.db

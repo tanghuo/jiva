@@ -21,7 +21,7 @@ const descriptions = {
   },
 };
 
-export default function WorkbenchApprovalPicker({ mode = 'ask', engine, disabled, deferred = false, onChange }) {
+export default function WorkbenchApprovalPicker({ mode = 'ask', engine, disabled, active = false, update, onChange }) {
   const [open, setOpen] = useState(false), [position, setPosition] = useState({});
   const root = useRef(null), popup = useRef(null), trigger = useRef(null);
   const current = approvalModes.find(value => value.id === mode) || approvalModes[0];
@@ -62,11 +62,12 @@ export default function WorkbenchApprovalPicker({ mode = 'ask', engine, disabled
       buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
     }
   }}>
-    <button type="button" ref={trigger} className="workbench-approval-trigger" data-mode={current.id} aria-label="审批模式" aria-haspopup="dialog" aria-expanded={open} disabled={locked} title={deferred ? `${copy[current.id]}。下一轮生效` : copy[current.id]} onClick={show}>
-      <Icon size={15} /><span>{current.label}</span>
+    <button type="button" ref={trigger} className="workbench-approval-trigger" data-mode={current.id} aria-label="审批模式" aria-haspopup="dialog" aria-expanded={open} disabled={locked} title={active ? update?.message || `${copy[current.id]}。切换后将显示本轮生效范围` : copy[current.id]} onClick={show}>
+      <Icon size={15} /><span>{current.label}{active && ({ partial: ' · 部分生效', deferred: ' · 下一轮', pending: ' · 应用中' }[update?.status] || '')}</span>
     </button>
     {open && <div ref={popup} tabIndex={-1} className="workbench-approval-popover" style={position} role="dialog" aria-label="选择审批模式">
       <header>应如何批准这些操作？</header>
+      {active && <p className="workbench-muted">切换会尽量应用到本轮后续操作和待审批请求；原生引擎的限制会在切换后说明。已经执行的操作不受影响。</p>}
       {options.map(value => {
         const OptionIcon = icons[value.id];
         return <button type="button" className="workbench-approval-option" data-mode={value.id} key={value.id} aria-label={value.label} aria-pressed={mode === value.id} onClick={() => { if (value.id !== mode) onChange(value.id); close(true); }}>

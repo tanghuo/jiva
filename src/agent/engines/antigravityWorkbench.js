@@ -46,7 +46,7 @@ export async function describeAntigravityWorkbench(settings = {}, { cwd, signal,
 
 export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sessionId, signal, onRequest, onEvent, onExit, restricted = false, approvalMode = 'ask', tools = [] }) {
   if (restricted || tools.length) throw new Error('Antigravity 暂不支持受限工作流或工作台应用工具');
-  const nativeMode = { ask: 'default', auto: 'auto_edit', allow: 'yolo' }[approvalMode];
+  let nativeMode = { ask: 'default', auto: 'auto_edit', allow: 'yolo' }[approvalMode], pendingMode;
   if (!nativeMode) throw new Error('无效的 Antigravity 审批模式');
   let client, thread, prompting = false, closed = false;
   const emitUpdate = createAcpWorkbenchEvents(onEvent);
@@ -59,7 +59,7 @@ export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sess
         if (['agent_message_chunk', 'agent_thought_chunk', 'plan'].includes(value.sessionUpdate)) return emitUpdate(value);
         if (value.sessionUpdate === 'config_option_update') {
           for (const option of value.configOptions || []) {
-            if (option.id === 'mode' && option.currentValue !== nativeMode || option.id === 'model' && option.currentValue !== settings.model) throw new Error('Antigravity 在执行中切换了模型或审批模式，请核查结果');
+            if (option.id === 'mode' && option.currentValue !== nativeMode && (!pendingMode || option.currentValue !== pendingMode) || option.id === 'model' && option.currentValue !== settings.model) throw new Error('Antigravity 在执行中切换了模型或审批模式，请核查结果');
           }
         }
         if (['tool_call', 'tool_call_update'].includes(value.sessionUpdate)) {
@@ -111,9 +111,23 @@ export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sess
     if (configuredMode.configOptions?.find(option => option.id === 'mode')?.currentValue !== nativeMode
       || configuredMode.configOptions?.find(option => option.id === 'model')?.currentValue !== settings.model
       || effort && configuredMode.configOptions?.find(option => option.id === 'thinking_level')?.currentValue !== effort) throw new Error('Antigravity 未确认所选模型、推理强度和审批模式');
+    const capabilities = { verified: true, approvalMode, approval: 'native', fileReads: 'native', osSandbox: false, applicationTools: false, resume: true, images: init.agentCapabilities?.promptCapabilities?.image === true, model: settings.model, effort: effort || 'model_default' };
     return {
       sessionId: thread, version: `antigravity-acp ${init.agentInfo.version}`,
-      capabilities: { verified: true, approvalMode, approval: 'native', fileReads: 'native', osSandbox: false, applicationTools: false, resume: true, images: init.agentCapabilities?.promptCapabilities?.image === true, model: settings.model, effort: effort || 'model_default' },
+      capabilities,
+      async setApprovalMode(mode) {
+        const selected = { ask: 'default', auto: 'auto_edit', allow: 'yolo' }[mode];
+        if (!selected || closed) throw new Error('Antigravity 审批模式不可切换');
+        if (selected === nativeMode) return;
+        pendingMode = selected;
+        try {
+          const configured = await client.request('session/set_config_option', { sessionId: thread, configId: 'mode', value: selected }, 10000);
+          if (configured.configOptions?.find(option => option.id === 'mode')?.currentValue !== selected
+            || configured.configOptions?.find(option => option.id === 'model')?.currentValue !== settings.model
+            || effort && configured.configOptions?.find(option => option.id === 'thinking_level')?.currentValue !== effort) throw new Error('Antigravity 未确认本轮审批模式，已停止本轮以避免权限不一致');
+          nativeMode = selected; capabilities.approvalMode = mode;
+        } finally { pendingMode = undefined; }
+      },
       async prompt(text, onDelivery = () => {}, images = [], files = []) {
         if (closed || prompting) throw new Error('Antigravity 会话不可发送');
         if (images.length && init.agentCapabilities?.promptCapabilities?.image !== true) throw new Error('Antigravity 未声明支持图片输入，任务未发送；请移除参考图后重试，或改用 Grok Build');

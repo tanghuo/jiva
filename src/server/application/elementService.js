@@ -110,7 +110,13 @@ export function createElementService(repo, imageStore, videoStore) {
         catch (error) { failed.push({ id, message: error.statusCode ? error.message : "删除失败，请重试" }); continue; }
         // Commit references first: a file failure must never leave a restorable record without its original.
         if (key) {
-          try { if (key.kind === "video") await videoStore.remove(key.storageKey); else await imageStore.remove(key); }
+          try {
+            if (key.kind === "video") await videoStore.remove(key.storageKey);
+            else if (key.kind === "album") {
+              for (const storageKey of key.storageKeys || []) await imageStore.remove(storageKey).catch(() => {});
+              if (key.storageKey) await imageStore.remove(key.storageKey);
+            } else await imageStore.remove(key);
+          }
           catch { cleanupFailed.push(id); }
         }
       }
@@ -133,7 +139,7 @@ export function createElementService(repo, imageStore, videoStore) {
       const file = repo.image(id, { trash });
       return { bytes: await imageStore.thumbnail(file.storageKey, width === null ? undefined : Number(width), { foreground, regenerate }), contentType: "image/webp" };
     },
-    async importImage(bytes, name, inputTags = [], material = false, spaceId) {
+    async importImage(bytes, name, inputTags = [], material = false, spaceId, albumId, commit = (write) => write()) {
       if (importing >= 2) throw elementError("正在保存图片，请稍后重试", 503);
       const tags = elementTags(inputTags);
       const originalName = name.split(/[\\/]/).pop().slice(0, 240) || "图片";
@@ -143,9 +149,9 @@ export function createElementService(repo, imageStore, videoStore) {
         let result;
         try {
           file.contentHash = createHash("sha256").update(bytes).digest("hex");
-          const existing = repo.findImageByHash(file.contentHash, spaceId);
+          const existing = albumId ? null : repo.findImageByHash(file.contentHash, spaceId);
           const missingStorageKey = existing && !existing.deleted_at && !await imageStore.exists(existing.storage_key) ? existing.storage_key : undefined;
-          result = repo.importImage({ tags, material, creationSource: "manual", spaceId }, file, missingStorageKey);
+          result = commit(() => repo.importImage({ tags, material, creationSource: "manual", spaceId, albumId }, file, missingStorageKey));
         }
         catch (error) { await imageStore.remove(file.storageKey).catch(() => {}); throw error; }
         // The import is committed: a failed cleanup of the duplicate copy must not report failure.
@@ -187,6 +193,11 @@ export function createElementService(repo, imageStore, videoStore) {
       const file = repo.video(id);
       return { handle: await videoStore.open(file.storageKey), contentType: file.mimeType, byteSize: file.byteSize, contentHash: file.contentHash };
     },
+
+    createAlbum: (payload) => repo.createAlbum(payload),
+    albumItems: (id) => repo.albumItems(id),
+    updateAlbum: (id, payload) => repo.updateAlbum(id, payload),
+    removeAlbumItem: (albumId, imageId) => repo.removeAlbumItem(albumId, imageId),
     videoStorage: (id) => repo.video(id),
     videoCover: (id) => videoStore.cover(repo.video(id).storageKey),
     async videoFirstFrame(id, options) {

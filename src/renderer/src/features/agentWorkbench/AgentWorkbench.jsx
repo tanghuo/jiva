@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { Plus, Square, ArrowUp, ShieldCheck, Folder, FolderOpen, PanelLeft, PanelRight, Monitor, ChevronRight, Check, CircleAlert, LoaderCircle, FileText, Download } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Plus, Square, ArrowUp, ShieldCheck, Folder, FolderOpen, PanelLeft, Monitor, ChevronRight, Check, CircleAlert, LoaderCircle, FileText } from 'lucide-react';
 import { apiUrl, request } from '../../api.js';
-import ReactMarkdown from 'react-markdown';
-import { DialogFrame } from '../../ui/ConfirmDialog.jsx';
+import WorkbenchMarkdown from './WorkbenchMarkdown.jsx';
+import WorkbenchImagePreview from './WorkbenchImagePreview.jsx';
+import WorkbenchFilePreview from './WorkbenchFilePreview.jsx';
 import AgentShell from '../../ui/AgentShell.jsx';
 import './workbench.css';
 import './workbenchSurface.css';
-import WorkbenchPolicy from './WorkbenchPolicy.jsx';
 import WorkbenchModelPicker from './WorkbenchModelPicker.jsx';
 import WorkbenchStart from './WorkbenchStart.jsx';
 import WorkbenchApprovalPicker from './WorkbenchApprovalPicker.jsx';
@@ -23,9 +23,16 @@ import { maxWorkbenchAttachments, attachmentError, attachmentKind, attachmentEve
 
 import { workbenchTimeline } from '../../../../shared/domain/agentWorkbench/events.js';
 import { activityTitle, commandState } from './workbenchActivity.js';
+import { applySessionNotice, applySessionNotices } from './sessionList.js';
 import { Button } from '../../ui/Button.jsx';
 
 const base = '/api/agent';
+const finishedNotice = { completed: '任务完成', failed: '任务失败', unknown: '结果待核查' };
+function notifyDesktop(sessionId, title, body) {
+  const notify = window.wikiDesktop?.notify;
+  if (typeof notify !== 'function' || !body) return;
+  Promise.resolve(notify({ title: title || '任务', body, sessionId })).catch(() => {});
+}
 const post = (route, value = {}) => request(base + route, { method: 'POST', body: JSON.stringify(value) });
 const labels = { ready: '就绪', running: '执行中', queued: '排队中', awaiting_approval: '等待审批', cancelling: '正在停止', completed: '完成', failed: '失败', cancelled: '已停止', unknown: '结果待核查', needs_attention: '需要核查' };
 const active = state => ['queued', 'running', 'awaiting_approval', 'cancelling'].includes(state);
@@ -90,6 +97,12 @@ function ExecutionEvent({ item, turnId, latest = false }) {
     </div>}
   </details>;
 }
+function operationFailureReason(item) {
+  if (!item) return '';
+  const output = item.output?.data.output || item.data.output || (item.data.content || []).map(block => block.type === 'content' && block.content?.type === 'text' ? block.content.text : '').join('\n');
+  const lines = output.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  return (lines.find(line => /error|exception|not found|denied|错误|失败|拒绝|无法/i.test(line)) || lines[0] || '').slice(0, 300);
+}
 function ExecutionGroup({ group, turnId, live }) {
   const running = live || group.items.some(item => item.type === 'tool.updated' && active(item.data.status));
   const [expanded, setExpanded] = useState(null);
@@ -97,21 +110,29 @@ function ExecutionGroup({ group, turnId, live }) {
   useEffect(() => { setExpanded(null); }, [running]);
   const tools = group.items.filter(item => item.type === 'tool.updated');
   const current = tools.findLast(item => active(item.data.status));
+  const failures = group.items.filter(item => (item.type === 'command.output' ? commandState(item.data) : item.data.status) === 'failed');
+  const failureReason = failures.map(operationFailureReason).find(Boolean);
   // Keep unfinished operations and the current plan visible even during parallel work.
   const recent = group.items.filter((item, index) => index >= group.items.length - 3 || item.type === 'plan.updated' || item.type === 'tool.updated' && active(item.data.status));
   const visible = running && !showAll ? recent : group.items;
   const hidden = group.items.length - visible.length;
   const latest = live ? group.items.findLast(item => item.type !== 'plan.updated') : null;
-  return <details className="workbench-execution" open={expanded ?? running} onToggle={event => {
+  return <><details className="workbench-execution" open={expanded ?? running} onToggle={event => {
     if (event.target !== event.currentTarget) return;
     if (event.currentTarget.open !== (expanded ?? running)) setExpanded(event.currentTarget.open);
-  }}><summary><ChevronRight size={14} /><span>{running ? current ? '正在执行' : '最近操作' : '执行过程'}</span><span className="workbench-activity-count">{tools.length || group.items.filter(item => item.type === 'command.output').length} 次操作</span></summary>
+  }}><summary><ChevronRight size={14} /><span>{running ? current ? '正在执行' : '最近操作' : '执行过程'}</span><span className="workbench-activity-count">{tools.length || group.items.filter(item => item.type === 'command.output').length} 次操作</span>{failures.length > 0 && <span className="workbench-failure-count">{failures.length} 项失败</span>}</summary>
     <div className="workbench-activity-list">
       {visible.map(item => <div className="workbench-event" data-status={item.data.status} key={item.seq}><ExecutionEvent item={item} turnId={turnId} latest={item === latest} /></div>)}
       {hidden > 0 && <button type="button" className="workbench-earlier-activity" onClick={() => setShowAll(true)}>查看全部 {group.items.length} 项操作</button>}
       {running && showAll && group.items.length > recent.length && <button type="button" className="workbench-earlier-activity" onClick={() => setShowAll(false)}>只看最近操作</button>}
     </div>
-  </details>;
+  </details>{failures.length > 0 && <div className="workbench-execution-warning" role="status"><CircleAlert size={14} /><div><span>有操作失败{live ? '，Agent 正在继续处理' : ''}</span>{failureReason && <p>{failureReason.slice(0, 300)}</p>}<button type="button" onClick={() => { setExpanded(true); setShowAll(true); }}>查看失败记录</button></div></div>}</>;
+}
+function turnDuration(turn, now = Date.now()) {
+  const end = active(turn.state) ? now : turn.finishedAt;
+  if (!Number.isFinite(end) || !Number.isFinite(turn.createdAt)) return '';
+  const elapsed = Math.max(0, Math.floor((end - turn.createdAt) / 1000));
+  return elapsed < 60 ? `${elapsed} 秒` : `${Math.floor(elapsed / 60)} 分 ${elapsed % 60} 秒`;
 }
 function TurnStatus({ turn, groups }) {
   const [now, setNow] = useState(Date.now);
@@ -121,52 +142,118 @@ function TurnStatus({ turn, groups }) {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [running]);
-  const elapsed = Math.max(0, Math.floor(((running ? now : turn.finishedAt) - turn.createdAt) / 1000));
-  const duration = elapsed < 60 ? `${elapsed} 秒` : `${Math.floor(elapsed / 60)} 分 ${elapsed % 60} 秒`;
+  const duration = turnDuration(turn, now);
   const tools = groups.flatMap(group => group.items).filter(item => item.type === 'tool.updated');
   const current = tools.findLast(item => active(item.data.status));
   const thinking = groups.at(-1)?.items[0].type === 'reasoning.delta';
   const description = turn.state === 'running' ? current ? activityTitle(current.data) : thinking ? '模型思考中' : tools.length ? '正在继续处理' : '正在等待引擎响应' : labels[turn.state] || turn.state;
-  const latest = tools.at(-1);
   return <div className="workbench-turn-state" data-state={turn.state} role={running ? 'status' : undefined}>
     <span className="workbench-status-label">{running && <span className="workbench-working-dot" aria-hidden="true" />}{description}</span>
-    {running && Number.isFinite(elapsed) && <span className="workbench-elapsed">已用时 {duration}</span>}
-    {running && !current && latest && <span className="workbench-last-operation" title={activityTitle(latest.data)}>最近操作：{activityTitle(latest.data)}</span>}
+    {running && duration && <span className="workbench-elapsed">本轮已用时 {duration}</span>}
     {turn.state === 'unknown' && <span>不会自动重发，请先核对文件和命令结果。</span>}
   </div>;
 }
-function FileReference({ artifact, id, href }) {
+function FileReference({ artifact, id, href, onPreview }) {
   const filename = artifact?.metadata.filename || `附件-${id}.txt`;
   const extension = /\.([^.]+)$/.exec(filename)?.[1].toUpperCase() || '文件';
   const bytes = artifact?.byteSize;
   const size = !Number.isFinite(bytes) ? '' : bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
-  return <a className="workbench-file-reference" href={href} download={filename} title={filename} aria-label={`下载附件 ${filename}`}>
+  const pdf = artifact?.mimeType === 'application/pdf' || /\.pdf$/i.test(filename);
+  return <button type="button" className="workbench-file-reference" title={`预览 ${filename}`} aria-label={`预览附件 ${filename}`} onClick={() => onPreview({ filename, href, pdf })}>
     <FileText size={20} aria-hidden="true" />
     <span className="workbench-file-info"><span className="workbench-file-name">{artifact?.metadata.filename || '文字参考'}</span><span className="workbench-file-meta">{[extension, size].filter(Boolean).join(' · ')}</span></span>
-    <Download size={15} aria-hidden="true" />
-  </a>;
+  </button>;
+}
+function ProcessFold({ turn, groups }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef(null);
+  const pin = useRef(null);
+  const label = `用时 ${turnDuration(turn)}`.trim();
+  const failures = groups.flatMap(group => group.items).filter(item => (item.type === 'command.output' ? commandState(item.data) : item.data.status) === 'failed').length;
+  useLayoutEffect(() => {
+    const top = pin.current;
+    const button = root.current?.querySelector('.workbench-process-toggle');
+    const scroller = root.current?.closest('.workbench-scroll');
+    if (top == null || !button || !scroller) return;
+    let frame = 0;
+    const started = performance.now();
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const adjust = () => {
+      const delta = button.getBoundingClientRect().top - top;
+      if (Math.abs(delta) > 0.5) scroller.scrollTop += delta;
+    };
+    adjust();
+    if (reduce) return;
+    const tick = () => {
+      adjust();
+      if (performance.now() - started < 320) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+  return <div className="workbench-process" data-open={open ? '' : undefined} ref={root}>
+    <button type="button" className="workbench-process-toggle" aria-expanded={open} onClick={event => { pin.current = event.currentTarget.getBoundingClientRect().top; setOpen(value => !value); }}><span>{label}</span>{failures > 0 && <span className="workbench-failure-count">过程含 {failures} 项失败</span>}<ChevronRight size={14} /></button>
+    <div className="workbench-process-rule" aria-hidden="true" />
+    <div className="workbench-process-body"><div className="workbench-process-body-inner"><RawTurnGroups groups={groups} turn={turn} /></div></div>
+  </div>;
+}
+function ProcessDetails({ groups, turn }) {
+  const [open, setOpen] = useState(false);
+  const items = groups.flatMap(group => group.items);
+  const tools = items.filter(item => item.type === 'tool.updated' || item.type === 'command.output');
+  const failures = tools.filter(item => (item.type === 'command.output' ? commandState(item.data) : item.data.status) === 'failed');
+  const reason = operationFailureReason(failures.at(-1));
+  return <div className="workbench-process-section">
+    <details className="workbench-process-details" open={open} onToggle={event => { if (event.target === event.currentTarget) setOpen(event.currentTarget.open); }}>
+      <summary><ChevronRight size={14} /><span>处理过程</span>{tools.length > 0 && <span>{tools.length} 次操作</span>}{failures.length > 0 && <span className="workbench-failure-count">{failures.length} 项失败</span>}</summary>
+      <RawTurnGroups groups={groups} turn={turn} />
+    </details>
+    {!open && failures.length > 0 && <div className="workbench-execution-warning" role="status"><CircleAlert size={14} /><div><span>{failures.length} 项操作失败{active(turn.state) ? '，任务仍在进行' : ''}</span>{reason && <p>{reason.slice(0, 300)}</p>}<button type="button" onClick={() => setOpen(true)}>查看失败记录</button></div></div>}
+  </div>;
+}
+function TurnGroups({ groups, turn }) {
+  const sections = [];
+  for (const group of groups) {
+    const process = group.activity || group.items[0].type === 'reasoning.delta';
+    const previous = sections.at(-1);
+    if (process && previous?.process) previous.groups.push(group);
+    else sections.push({ process, groups: [group] });
+  }
+  return sections.map(section => section.process && section.groups.some(group => group.items[0].type === 'reasoning.delta')
+    ? <ProcessDetails groups={section.groups} turn={turn} key={section.groups[0].key} />
+    : <RawTurnGroups groups={section.groups} turn={turn} key={section.groups[0].key} />);
+}
+function RawTurnGroups({ groups, turn }) {
+  const lastActivity = groups.findLastIndex(group => group.activity);
+  return groups.map((group, index) => group.activity ? <ExecutionGroup group={group} turnId={turn.id} live={active(turn.state) && index === lastActivity} key={group.key} /> : group.items[0].type === 'reasoning.delta' ? <WorkbenchReasoning item={group.items[0]} live={turn.state === 'running' && index === groups.length - 1} key={group.key} /> : <div className="workbench-event assistant" data-phase={group.items[0].data.phase} key={group.key}>{group.items[0].type === 'message.delta' ? <WorkbenchMarkdown>{group.items[0].data.text}</WorkbenchMarkdown> : <p role="alert">{group.items[0].data.error}</p>}</div>);
 }
 function Timeline({ turns, events, artifacts, sessionId, renderResults }) {
   const [preview, setPreview] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
   const artifactUrl = id => apiUrl(`${base}/artifacts/${id}/content?sessionId=${sessionId}`);
   return <div className="workbench-timeline" aria-label="执行时间线">
     {turns.map(turn => {
       const groups = workbenchTimeline(events, turn);
+      // Once a reply is done, keep that reply visible and fold the earlier thoughts and tool calls.
+      const answerAt = active(turn.state) ? -1 : groups.findLastIndex(group => !group.activity && group.items[0].type === 'message.delta');
+      const folded = answerAt > 0;
       return <section className="workbench-turn" key={turn.id}>
         <div className="workbench-message user">
           {!!turn.input.artifactIds?.length && <div className="workbench-message-references">{turn.input.artifactIds.map(id => {
             const artifact = artifacts.find(item => item.id === id);
-            return artifact?.type !== 'image' ? <FileReference key={id} artifact={artifact} id={id} href={artifactUrl(id)} /> : <button type="button" key={id} aria-label="查看参考图" onClick={() => setPreview(id)}><img loading="lazy" src={artifactUrl(id)} alt="本轮参考图" /></button>;
+            return artifact?.type !== 'image' ? <FileReference key={id} artifact={artifact} id={id} href={artifactUrl(id)} onPreview={setFilePreview} /> : <button type="button" key={id} aria-label="查看参考图" onClick={() => setPreview(id)}><img loading="lazy" src={artifactUrl(id)} alt="本轮参考图" /></button>;
           })}</div>}
           <p>{turn.input.text}</p>
         </div>
-        {groups.map((group, index) => group.activity ? <ExecutionGroup group={group} turnId={turn.id} live={active(turn.state) && index === groups.findLastIndex(value => value.activity)} key={group.key} /> : group.items[0].type === 'reasoning.delta' ? <WorkbenchReasoning item={group.items[0]} live={turn.state === 'running' && index === groups.length - 1} key={group.key} /> : <div className="workbench-event assistant" data-phase={group.items[0].data.phase} key={group.key}>{group.items[0].type === 'message.delta' ? <div className="workbench-markdown"><ReactMarkdown skipHtml components={{ a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer">{children}</a> }}>{group.items[0].data.text}</ReactMarkdown></div> : <p role="alert">{group.items[0].data.error}</p>}</div>)}
+        {folded && <ProcessFold turn={turn} groups={groups.slice(0, answerAt)} />}
+        <TurnGroups groups={folded ? groups.slice(answerAt) : groups} turn={turn} />
         {renderResults(turn)}
         <TurnStatus turn={turn} groups={groups} />
         <WorkbenchChanges turn={turn} sessionBusy={turns.some(turn => active(turn.state))} revision={events.filter(event => event.turnId === turn.id && ['file.changed', 'file.native_diff', 'engine.diff', 'workspace.changed'].includes(event.type)).at(-1)?.seq || 0} />
       </section>;
     })}
-    {preview && <DialogFrame title="参考图" closeLabel="关闭参考图" onClose={() => setPreview(null)} className="workbench-reference-dialog"><img src={artifactUrl(preview)} alt="本轮参考图" /></DialogFrame>}
+    {preview && <WorkbenchImagePreview title="参考图" closeLabel="关闭参考图" src={artifactUrl(preview)} alt="本轮参考图" onClose={() => setPreview(null)} />}
+    {filePreview && <WorkbenchFilePreview file={filePreview} onClose={() => setFilePreview(null)} />}
   </div>;
 }
 export default function AgentWorkbench({ onOpen }) {
@@ -189,8 +276,9 @@ export default function AgentWorkbench({ onOpen }) {
       return model === previous.model ? previous : { ...previous, model };
     });
   }, [modelCatalog, settings.engine]);
-  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [railOpen, setRailOpen] = useState(false), [detailsOpen, setDetailsOpen] = useState(false), [pendingAttachments, setPendingAttachments] = useState([]);
-  const fileInput = useRef(null), scroll = useRef(null), follows = useRef(true), sending = useRef(false), pendingRef = useRef([]), detailLoad = useRef(0);
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [railOpen, setRailOpen] = useState(false), [pendingAttachments, setPendingAttachments] = useState([]);
+  const fileInput = useRef(null), scroll = useRef(null), follows = useRef(true), sending = useRef(false), pendingRef = useRef([]), detailLoad = useRef(0), sessionTitle = useRef('任务'), sessionNotices = useRef(new Map());
+  sessionTitle.current = detail?.session?.data?.title || '任务';
   pendingRef.current = pendingAttachments;
   const editor = useWorkbenchDraft(selected, setError), draft = editor.value?.text || '';
   const textarea = useWorkbenchTextarea(draft);
@@ -204,14 +292,20 @@ export default function AgentWorkbench({ onOpen }) {
       return next;
     });
   };
+  function rememberSession(session) {
+    if (!session || !Number.isFinite(session.id) || !Number.isFinite(session.revision)) return;
+    const previous = sessionNotices.current.get(session.id);
+    if (!previous || session.revision >= previous.revision) sessionNotices.current.set(session.id, session);
+  }
   function applyDetail(value) {
     if (!value?.session) return;
+    rememberSession(value.session);
     setDetail(current => current?.session.id === value.session.id && current.session.revision > value.session.revision ? current : value);
     setSessions(previous => previous.map(session => session.id === value.session.id && session.revision > value.session.revision ? session : session.id === value.session.id ? value.session : session));
   }
   const refresh = async () => {
     const [state, list, saved] = await Promise.all([request(base + '/status'), request(base + '/sessions'), request(base + '/workspaces')]);
-    setStatus(state); setSessions(list.sessions); setProjects(saved.projects);
+    setStatus(state); setSessions(applySessionNotices(list.sessions, sessionNotices.current)); setProjects(saved.projects);
     if (readStoredSet(OPEN_PROJECTS_KEY) === null && saved.projects?.length) {
       const initial = new Set(saved.projects.map(item => item.id));
       setOpenProjects(initial);
@@ -256,18 +350,43 @@ export default function AgentWorkbench({ onOpen }) {
   useEffect(() => {
     setDetail(null); setEvents([]);
     if (!selected) return;
-    let stopped = false;
+    let stopped = false, baselineReady = false, baseline = 0, maxSeen = 0;
     const load = () => {
       const token = ++detailLoad.current;
       return request(`${base}/sessions/${selected}`).then(value => {
-        if (!stopped && token === detailLoad.current) { applyDetail(value); editor.hydrate(selected, value.draft); }
+        if (!stopped && token === detailLoad.current) {
+          applyDetail(value); editor.hydrate(selected, value.draft);
+          // The first snapshot is history. Later events past this cursor are new.
+          if (!baselineReady) { baselineReady = true; baseline = Math.max(Number(value.session.seq) || 0, maxSeen); }
+        }
       }).catch(error => { if (!stopped && token === detailLoad.current) setError(error.message); });
     };
     load(); const timer = setInterval(load, 1000);
     const stream = new EventSource(apiUrl(`${base}/sessions/${selected}/events?after=0`));
-    stream.onmessage = event => { try { const item = JSON.parse(event.data); if (!stopped) { setEvents(previous => previous.some(e => e.seq === item.seq) ? previous : [...previous, item]); if (item.type === 'turn.finished') void load(); } } catch { if (!stopped) setError('事件格式无效，请刷新会话'); } };
+    stream.onmessage = event => { try {
+      const item = JSON.parse(event.data);
+      if (stopped) return;
+      setEvents(previous => previous.some(e => e.seq === item.seq) ? previous : [...previous, item]);
+      if (item.type === 'turn.finished') void load();
+      maxSeen = Math.max(maxSeen, item.seq || 0);
+      if (!baselineReady || !(item.seq > baseline)) return;
+      baseline = item.seq;
+      if (item.type === 'approval.requested') notifyDesktop(selected, sessionTitle.current, '需要你的批准');
+      else if (item.type === 'turn.finished') notifyDesktop(selected, sessionTitle.current, finishedNotice[item.data?.state]);
+    } catch { if (!stopped) setError('事件格式无效，请刷新会话'); } };
     return () => { stopped = true; clearInterval(timer); stream.close(); };
   }, [selected]);
+  useEffect(() => {
+    const stream = new EventSource(apiUrl(`${base}/sessions/events`));
+    stream.onmessage = event => {
+      try {
+        const notice = JSON.parse(event.data);
+        rememberSession(notice);
+        setSessions(previous => applySessionNotice(previous, notice));
+      } catch { /* a malformed frame must not blank the sidebar */ }
+    };
+    return () => stream.close();
+  }, []);
   useEffect(() => { if (follows.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }, [events, detail?.turns.length, selected]);
   async function action(fn) {
     if (sending.current) return;
@@ -394,15 +513,11 @@ export default function AgentWorkbench({ onOpen }) {
   const chats = sessions.filter(session => session.purpose !== 'workflow');
   return <main aria-label="Agent 工作台" className="wiki-main workbench-page" data-c-surface="workbench">
     {error && <p role="alert" className="workbench-error">{error}</p>}
-    {/* Same AgentShell as AionUi: sessions left, timeline centre, session panel right (always). */}
-    <AgentShell className={`workbench-layout${railOpen ? " rail-open" : ""}`} resourcesOpen={detailsOpen} sessionsClassName="workbench-sessions" sessionsLabel="工作台会话"
-      resourcesClassName="workbench-inspector" resourcesLabel="会话详情"
+    <AgentShell className={`workbench-layout${railOpen ? " rail-open" : ""}`} sessionsClassName="workbench-sessions" sessionsLabel="工作台会话"
       header={<>
       <header className="workbench-topbar">
         <button className="icon-only workbench-rail-toggle" aria-label="切换会话列表" disabled={!status} aria-expanded={railOpen} onClick={() => setRailOpen(!railOpen)}><PanelLeft size={18} /></button>
         <div className="workbench-topbar-title"><strong>{detail?.session.data.title || '新任务'}</strong>{detail && <span title={detail.workspace.path}><FolderOpen size={13} />{projectLabel(detail.workspace)}</span>}</div>
-        {/* Only on phones, where the 会话详情 column folds away. */}
-        <div className="workbench-topbar-actions"><button type="button" className="icon-only agent-shell-resources-toggle" aria-label="会话设置" title="会话设置" aria-expanded={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)}><PanelRight size={18} /></button></div>
       </header>
       </>}
       sessions={status?.agentWorkbenchEnabled && <>
@@ -421,10 +536,7 @@ export default function AgentWorkbench({ onOpen }) {
         <p className="workbench-rail-title">最近</p>
         {chats.map(session => <button type="button" className="workbench-recent" key={session.id} aria-current={selected === session.id ? 'page' : undefined} disabled={busy} onClick={() => choose(session.id)}><span className="workbench-thread-label">{session.data.title}</span><SessionStatus state={session.state} /></button>)}
         {!chats.length && <p className="workbench-muted">首次发送后，会话会保存在这里。</p>}
-      </>}
-      resources={detail && selected ? <><h3>会话设置</h3><p className="workbench-path">{detail.workspace.path}</p>
-        <WorkbenchPolicy key={selected} session={detail.session} busy={busy} act={action} refresh={reloadDetail} /></>
-        : <><h3>会话设置</h3><p className="agent-shell-empty">打开或新建一个会话后，这里显示它的项目路径和审批规则。</p></>}>
+      </>}>
     {!status ? <p className="workbench-conversation" role="status">正在加载工作台…</p> : !status.agentWorkbenchEnabled ? <section className="workbench-empty"><h2>启用 Agent 工作台</h2><p>项目需要先确认信任；文件写入和命令逐次审批。已批准的命令使用当前用户权限运行。</p><button onClick={() => action(async () => { await request(base + '/settings', { method: 'PUT', body: JSON.stringify({ agentWorkbenchEnabled: true }) }); await refresh(); })} disabled={busy}>启用工作台</button></section> : <>
       <section className="workbench-conversation">
         {!selected ? <WorkbenchStart settings={settings} change={change} projects={projects} engines={status.engines} models={models} modelState={modelCatalog[settings.engine]} retryModels={() => loadEngineModels(settings.engine, true)} text={newText} setText={setNewText} busy={busy} create={create} createProject={createProject} selectEngine={selectEngine} loadModels={loadModels} connectAntigravity={connectAntigravity} files={pendingAttachments} addFiles={addPendingAttachments} removeFile={removePendingAttachment} /> : !detail ? <p role="status">正在打开会话…</p> : <>
@@ -451,11 +563,12 @@ export default function AgentWorkbench({ onOpen }) {
                   <button type="button" className="icon-only" aria-label="添加附件" title="添加图片、文本、代码或 PDF" disabled={busy || !editor.value || (editor.value?.attachments.length || 0) >= maxWorkbenchAttachments} onClick={() => fileInput.current?.click()}><Plus size={19} /></button>
                   <span className="workbench-project-chip" title={detail.workspace.path}><FolderOpen size={15} /><span>{projectLabel(detail.workspace)}</span></span>
                   <span className="workbench-machine"><Monitor size={14} />此计算机</span>
-                  {!detail.session.data.restricted && detail.session.purpose !== 'workflow' && <WorkbenchApprovalPicker mode={detail.session.policy.approvalMode} engine={detail.session.engine} disabled={busy} deferred={!!current} onChange={mode => action(async () => { const saved = await request(`${base}/sessions/${selected}/policy`, { method: 'PUT', body: JSON.stringify({ revision: detail.session.revision, approvalMode: mode }) }); rememberApprovalMode(saved.engine, saved.policy?.approvalMode); detailLoad.current += 1; setDetail(current => current?.session.id === saved.id ? { ...current, session: saved } : current); setSessions(current => current.map(item => item.id === saved.id ? saved : item)); await reloadDetail(); })} />}
+                  {!detail.session.data.restricted && detail.session.purpose !== 'workflow' && <WorkbenchApprovalPicker mode={detail.session.policy.approvalMode} engine={detail.session.engine} disabled={busy} active={!!current} update={detail.session.approvalUpdate} onChange={mode => action(async () => { const saved = await request(`${base}/sessions/${selected}/policy`, { method: 'PUT', body: JSON.stringify({ revision: detail.session.revision, approvalMode: mode }) }); rememberApprovalMode(saved.engine, saved.policy?.approvalMode); detailLoad.current += 1; setDetail(current => current?.session.id === saved.id ? { ...current, session: saved } : current); setSessions(current => current.map(item => item.id === saved.id ? saved : item)); await reloadDetail(); })} />}
                   <WorkbenchModelPicker engine={detail.session.engine} model={detail.session.data.model} effort={detail.session.data.effort} engines={status.engines} models={modelCatalog[detail.session.engine]?.models || []} modelState={modelCatalog[detail.session.engine]} retryModels={() => loadEngineModels(detail.session.engine, true)} busy={busy} change={changeSessionModel} loadModels={loadSessionModels} connectAntigravity={connectAntigravity} />
                   <span className="workbench-draft-state" data-saved={editor.value?.saved === editor.value?.edit ? "true" : "false"}>{current ? labels[current.state] : ""}</span>
                   {current ? <Button variant="primary" aria-label="停止" title="停止" disabled={busy || current.state === 'cancelling'} onClick={stop} className="icon-only"><Square size={14} fill="currentColor" /></Button> : <Button variant="primary" type="submit" aria-label="发送" title="发送" disabled={busy || !editor.value || !draft.trim()} className="icon-only"><ArrowUp size={19} /></Button>}
                 </div>
+                {current && detail.session.approvalUpdate && <p className="workbench-muted" role="status">{detail.session.approvalUpdate.message}</p>}
               </form>
             </div>
           </div>

@@ -141,6 +141,7 @@ test('workbench starts from a task, keeps the composer visible and recovers a fa
   assert.deepEqual(prompts, ['检查这个项目', '换模型后再问']);
   assert.equal((await api('/sessions')).sessions.length, 1);
   assert.equal(await page.locator('.workbench-execution').first().getAttribute('open'), null);
+  await page.locator('.workbench-process').first().locator('.workbench-process-toggle').click();
   await page.locator('.workbench-execution').first().locator(':scope > summary').click();
   const operation = page.locator('.workbench-execution').first().locator('.workbench-activity-line').filter({ hasText: '检查项目' });
   await operation.waitFor();
@@ -149,10 +150,8 @@ test('workbench starts from a task, keeps the composer visible and recovers a fa
   const composerGap = 1000 - (composer.y + composer.height);
   assert.ok(composer.y >= 0 && composerGap >= 12 && composerGap <= 40, `composer bottom gap ${composerGap}`);
   await page.screenshot({ path: '.local/workbench-ui/conversation.png' });
-  // The session panel is the AgentShell's right column: always there, no toggle.
   assert.equal(await page.getByRole('button', { name: '会话设置' }).count(), 0);
-  await page.getByRole('complementary', { name: '会话详情' }).getByRole('heading', { name: '会话设置' }).waitFor();
-  assert.equal(await page.getByRole('complementary', { name: '会话详情' }).getByRole('img').count(), 0);
+  assert.equal(await page.getByRole('complementary', { name: '会话详情' }).count(), 0);
   assert.equal(await page.getByRole('heading', { name: '已保存产物' }).count(), 0);
   assert.equal(await page.getByRole('button', { name: '保存到 Wiki', exact: true }).count(), 0);
   await page.getByLabel('任务内容').fill('待发送草稿'); await page.getByLabel('任务内容').press('Shift+Enter');

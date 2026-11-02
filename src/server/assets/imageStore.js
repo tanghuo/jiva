@@ -34,7 +34,18 @@ export function createImageStore(directory) {
     const width = metadata.width, height = metadata.pageHeight || metadata.height;
     return metadata.orientation >= 5 ? { width: height, height: width } : { width, height };
   }
+  async function inspect(bytes) {
+    if (!bytes.length || bytes.length > maxImageBytes) throw elementError("图片必须在 25 MiB 以内", 413);
+    try {
+      const decoder = sharp(bytes, { animated: true, limitInputPixels: 40_000_000, failOn: "warning" });
+      const metadata = await decoder.metadata();
+      if (!formats[metadata.format] || (metadata.pages || 1) > 200 || metadata.width * metadata.height > 40_000_000) throw new Error('Unsupported image');
+      await pipeline(decoder.raw(), new Writable({ write(_chunk, _encoding, callback) { callback(); } }));
+      return { format: metadata.format, ...dimensions(metadata) };
+    } catch { throw elementError("图片无法读取：支持 PNG、JPEG、WebP、GIF，总像素不超过 4000 万，动画不超过 200 帧", 415); }
+  }
   return {
+    inspect,
     thumbnail(key, width, { foreground = false, regenerate = false } = {}) {
       filePath(key);
       if (width !== undefined && !imagePreviewWidths.includes(width)) throw elementError("无效的预览宽度");
@@ -88,19 +99,7 @@ export function createImageStore(directory) {
       return dimensions(metadata);
     },
     async save(bytes, originalName) {
-      if (!bytes.length || bytes.length > maxImageBytes) throw elementError("图片必须在 25 MiB 以内", 413);
-      let format, size;
-      try {
-        const decoder = sharp(bytes, { animated: true, limitInputPixels: 40_000_000, failOn: "warning" });
-        const metadata = await decoder.metadata();
-        format = metadata.format; size = dimensions(metadata);
-        if (!formats[format] || (metadata.pages || 1) > 200 || metadata.width * metadata.height > 40_000_000) {
-          throw new Error("Unsupported image dimensions or format");
-        }
-        await pipeline(decoder.raw(), new Writable({ write(_chunk, _encoding, callback) { callback(); } }));
-      } catch {
-        throw elementError("图片无法读取：支持 PNG、JPEG、WebP、GIF，总像素不超过 4000 万，动画不超过 200 帧", 415);
-      }
+      const { format, ...size } = await inspect(bytes);
       await mkdir(directory, { recursive: true });
       const storageKey = `${randomUUID()}.${format}`;
       const target = filePath(storageKey);

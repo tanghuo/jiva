@@ -137,6 +137,30 @@ test('Antigravity refuses to send when the server does not confirm the selected 
   await assert.rejects(f.open({}, { approvalMode: 'auto' }), /未确认/);
   await assert.rejects(readFile(path.join(f.root, 'last-prompt.json')), { code: 'ENOENT' });
 });
+
+test('Antigravity confirms live mode changes while a permission request is waiting, then uses the new native mode', async t => {
+  const f = await fixture(t);
+  const waiting = Promise.withResolvers(), decision = Promise.withResolvers();
+  const client = await f.open({}, { onRequest() { waiting.resolve(); return decision.promise; } });
+  const prompt = client.prompt('WRITE');
+  await waiting.promise;
+  await writeFile(path.join(f.root, '.reject-live-mode'), 'yes');
+  await assert.rejects(client.setApprovalMode('allow'), { code: 'ACP_ERROR', rpcCode: -32601 });
+  assert.equal(client.capabilities.approvalMode, 'ask');
+  await rm(path.join(f.root, '.reject-live-mode'));
+  await client.setApprovalMode('allow');
+  assert.equal(client.capabilities.approvalMode, 'allow');
+  decision.resolve(true);
+  await prompt;
+  await client.prompt('EXECUTE');
+  assert.equal(await readFile(path.join(f.root, 'result.txt'), 'utf8'), 'approved\n');
+  await client.setApprovalMode('ask');
+  assert.equal(client.capabilities.approvalMode, 'ask');
+  // A provider ignoring a live request must never be advertised as changed.
+  await writeFile(path.join(f.root, '.ignore-mode'), 'yes');
+  await assert.rejects(client.setApprovalMode('auto'), /未确认本轮审批模式/);
+  assert.equal(client.capabilities.approvalMode, 'ask');
+});
 test('Antigravity native approvals accept/reject once, never grant always, and expose provider diffs without undo', async t => {
   const f = await fixture(t);
   const denied = await f.open(); await denied.prompt('WRITE');

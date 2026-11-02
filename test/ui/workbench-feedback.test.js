@@ -47,6 +47,8 @@ test('workbench keeps recent feedback visible between tool calls and collapses f
   await page.getByRole('button', { name: '发送', exact: true }).click();
   const status = page.locator('.workbench-turn-state');
   await page.locator('.workbench-activity-spinner').waitFor();
+  await page.getByText('有操作失败，Agent 正在继续处理', { exact: true }).waitFor();
+  assert.match(await page.locator('.workbench-execution-warning').innerText(), /无法将 rg/);
   assert.match(await status.innerText(), /更新模型选择逻辑.*已用时/s);
   assert.equal(await page.locator('.workbench-activity-line').count(), 3);
   const failed = page.locator('.workbench-operation-title').filter({ hasText: '运行命令 · rg -n' });
@@ -74,7 +76,8 @@ test('workbench keeps recent feedback visible between tool calls and collapses f
   await page.screenshot({ path: '.local/workbench-ui/compact-feedback-desktop.png' });
   toolDone.resolve();
   await page.getByText('正在继续处理', { exact: true }).waitFor();
-  assert.match(await page.locator('.workbench-last-operation').innerText(), /最近操作：更新模型选择逻辑/);
+  assert.equal(await page.locator('.workbench-last-operation').count(), 0);
+  assert.match(await page.locator('.workbench-elapsed').innerText(), /^本轮已用时 /);
   assert.equal(await page.locator('.workbench-execution').getAttribute('open'), '');
   assert.equal(await page.locator('.workbench-activity-line').count(), 3);
   assert.equal(await page.locator('.workbench-activity-spinner').count(), 0);
@@ -86,6 +89,8 @@ test('workbench keeps recent feedback visible between tool calls and collapses f
   finish.resolve();
   await page.getByRole('button', { name: '发送', exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelector('.workbench-execution')?.open === false);
+  assert.match(await page.locator('.workbench-process-toggle').innerText(), /过程含 1 项失败/);
+  await page.locator('.workbench-process-toggle').click();
   await page.locator('.workbench-execution > summary').click();
   assert.equal(await page.locator('.workbench-activity-line').count(), 5);
 });

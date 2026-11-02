@@ -66,9 +66,13 @@ test('workbench selects a unified approval mode, persists changes and asks once 
   assert.equal(await picker().isDisabled(), false);
   await choose('.workbench-composer', '自动审批');
   await picker().filter({ hasText: '自动审批' }).waitFor();
+  await page.getByText('本轮先按手动审批处理；Grok 自动判断从下一轮生效', { exact: true }).waitFor();
+  assert.match(await picker().innerText(), /部分生效/);
   assert.equal(await page.getByRole('region', { name: '待审批操作' }).count(), 1);
-  await page.getByRole('button', { name: '拒绝', exact: true }).click();
-  await page.getByText('已拒绝写入', { exact: true }).waitFor();
+  await choose('.workbench-composer', '全部允许');
+  await page.getByText('完成：这次手动确认', { exact: true }).waitFor();
+  await page.getByRole('region', { name: '待审批操作' }).waitFor({ state: 'detached' });
+  await choose('.workbench-composer', '自动审批');
   await page.getByRole('button', { name: '发送', exact: true }).waitFor();
   await page.getByLabel('任务内容').fill('下一轮自动');
   await page.getByRole('button', { name: '发送', exact: true }).click();

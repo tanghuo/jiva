@@ -67,7 +67,7 @@ export async function startAntigravityAcp(settings, { cwd, signal, onNotificatio
       if (value.error) {
         const auth = value.error.code === -32000 && /auth/i.test(value.error.message || '');
         // Do not persist arbitrary RPC diagnostics or stderr containing account data.
-        entry.reject(Object.assign(new Error(auth ? 'Antigravity ACP 需要连接账号；桌面版登录可能未共享给 ACP，请点击“连接 Antigravity 账号”' : `Antigravity ${entry.method} 请求失败（${value.error.code}）`), { code: auth ? 'AUTH_REQUIRED' : 'ACP_ERROR' }));
+        entry.reject(Object.assign(new Error(auth ? 'Antigravity ACP 需要连接账号；桌面版登录可能未共享给 ACP，请点击“连接 Antigravity 账号”' : `Antigravity ${entry.method} 请求失败（${value.error.code}）`), { code: auth ? 'AUTH_REQUIRED' : 'ACP_ERROR', rpcCode: typeof value.error.code === 'number' ? value.error.code : undefined }));
       } else entry.resolve(value.result);
     } else if (value.method) Promise.resolve().then(() => onNotification(value.method, value.params || {})).catch(error => { fail(error); void close(); });
   }

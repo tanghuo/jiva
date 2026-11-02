@@ -47,6 +47,29 @@
   .workspace-footer .nav-item { width: auto; }
   .workspace-local { display: none; }
 }
+
+/* Primary destination: one control-size taller than the content rows. */
+.wiki-sidebar .wiki-agent-entry {
+  min-height: var(--h-lg);
+  margin-bottom: var(--sp-2);
+  padding-inline: var(--sp-4);
+  border-radius: var(--r-lg);
+  font-weight: 600;
+}
+.wiki-sidebar .wiki-agent-entry > svg { width: 20px; height: 20px; }
+.wiki-sidebar .wiki-agent-entry:not(.active):not([aria-current="page"]) {
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line-strong) 32%, transparent);
+}
+.wiki-sidebar .wiki-agent-entry:hover:not(:disabled):not(.active):not([aria-current="page"]) {
+  background: var(--panel);
+  color: var(--ink);
+}
+.wiki-sidebar .wiki-agent-entry.active,
+.wiki-sidebar .wiki-agent-entry[aria-current="page"] {
+  box-shadow: var(--e-1), inset 0 0 0 1px color-mix(in srgb, var(--line-strong) 22%, transparent);
+}
 @media (max-width: 720px) {
   .wiki-detail > .wiki-detail-sticky-navigation { flex-wrap: wrap; row-gap: var(--sp-1); }
   .wiki-detail-nav-actions { padding-left: 0; }
@@ -79,6 +102,8 @@
 }
 .space-switcher-chevron { flex: 0 0 auto; color: var(--muted); transition: transform var(--duration-fast) var(--ease-out); }
 .space-switcher.is-open .space-switcher-chevron { transform: rotate(180deg); }
+/* Liquid glass gives every sidebar child z-index: 1. The nav comes after this control, so an open menu paints underneath it. */
+.wiki-sidebar .space-switcher.is-open { z-index: var(--z-menu); }
 .space-switcher::after {
   content: "";
   display: block;
@@ -98,9 +123,7 @@
   padding: var(--sp-2);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--panel) 82%, transparent);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  background: var(--panel);
   box-shadow: var(--e-2);
 }
 .space-switcher-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }

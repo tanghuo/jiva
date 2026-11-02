@@ -13,7 +13,7 @@
 }
 /* A real grid box. display:contents made this layer miss pointer hits in Chromium. */
 .workbench-page[data-c-surface="workbench"] .workbench-layout {
-  display: grid; grid-template-columns: 240px minmax(0, 1fr) 300px; grid-template-rows: minmax(0, 1fr);
+  display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
   position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; gap: 0;
 }
 .workbench-topbar { flex: 0 0 58px; display: flex; align-items: center; gap: 12px; padding: 0 24px; min-width: 0; }
@@ -28,7 +28,19 @@
   grid-column: 1; grid-row: 1; position: relative; z-index: 1; padding: 18px 12px; background: var(--bg);
   border: 0; border-right: 1px solid var(--line); border-radius: 0; box-shadow: none; gap: 3px;
   display: flex; flex-direction: column; overflow-y: auto; justify-content: flex-start;
+  scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.28) transparent;
 }
+/* Slim pill like the Codex sidebar: no track, no arrow buttons. The transparent border keeps the thumb near 4px. */
+.workbench-page[data-c-surface="workbench"] .workbench-sessions::-webkit-scrollbar { width: 10px; height: 10px; }
+.workbench-page[data-c-surface="workbench"] .workbench-sessions::-webkit-scrollbar-track,
+.workbench-page[data-c-surface="workbench"] .workbench-sessions::-webkit-scrollbar-corner { background: transparent; }
+.workbench-page[data-c-surface="workbench"] .workbench-sessions::-webkit-scrollbar-thumb {
+  border: 3px solid transparent; border-radius: 999px; background-color: rgba(0, 0, 0, 0.22); background-clip: padding-box;
+}
+.workbench-page[data-c-surface="workbench"] .workbench-sessions::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.38); background-clip: padding-box;
+}
+.workbench-page[data-c-surface="workbench"] .workbench-sessions::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 .workbench-page[data-c-surface="workbench"] .workbench-sessions > button { border: 0; border-radius: 8px !important; min-height: var(--h-lg); padding: 9px 10px; background: transparent; box-shadow: none; gap: 3px; }
 .workbench-page[data-c-surface="workbench"] .workbench-topbar-actions > button { border: 0; border-radius: 7px; background: transparent; box-shadow: none; color: var(--muted); }
 .workbench-page .workbench-sessions > button:hover, .workbench-page .workbench-sessions > button[aria-current] { background: var(--workbench-selected); border-color: transparent; box-shadow: none; }
@@ -117,48 +129,86 @@
 .workbench-source-folder p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .workbench-sessions > .workbench-muted { margin: 10px; line-height: 1.7; font-size: 12px; }
 .workbench-page[data-c-surface="workbench"] .workbench-conversation { flex: 1; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: var(--panel); }
-.workbench-scroll { padding: 30px 32px 20px; scrollbar-gutter: stable both-edges; }
+.workbench-scroll { padding: 30px 32px 20px; scrollbar-gutter: stable both-edges; overflow-anchor: none; }
 .workbench-scroll > * { max-width: 760px; }
 .workbench-timeline { gap: 40px; padding: 0; }
 .workbench-turn { padding: 0; border: 0; min-width: 0; }
 .workbench-page[data-c-surface="workbench"] .workbench-message.user { width: fit-content; max-width: 85%; margin: 0 0 28px auto; padding: 12px 18px; background: var(--workbench-bubble); border-radius: 20px; color: var(--ink); font-size: 14px; }
 .workbench-message.user p { margin: 0; line-height: 1.7; }
 .workbench-message-references { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-.workbench-page a.workbench-file-reference {
-  display: flex; align-items: center; gap: 10px; flex: 0 1 280px; width: 280px; min-width: 0; max-width: 100%;
-  box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--workbench-border); border-radius: 12px;
-  background: var(--panel); color: var(--ink); text-decoration: none;
+.workbench-page button.workbench-file-reference {
+  display: flex; align-items: center; justify-content: flex-start; gap: 10px; flex: 0 1 280px; width: 280px; min-width: 0; max-width: 100%;
+  box-sizing: border-box; min-height: 0; padding: 10px 12px; border: 1px solid var(--workbench-border); border-radius: 12px;
+  background: var(--panel); color: var(--ink); box-shadow: none; text-align: left; white-space: normal; cursor: pointer;
 }
-.workbench-page a.workbench-file-reference:hover { background: var(--workbench-selected); }
+.workbench-page button.workbench-file-reference:hover:not(:disabled) { background: var(--workbench-selected); color: var(--ink); }
 .workbench-file-reference > svg { flex-shrink: 0; color: var(--workbench-secondary); }
-.workbench-file-reference > svg:last-child { margin-left: auto; }
 .workbench-file-info { display: grid; gap: 4px; min-width: 0; }
 .workbench-file-name { overflow-wrap: anywhere; font-size: 13px; font-weight: 500; line-height: 1.45; }
 .workbench-file-meta { overflow-wrap: anywhere; color: var(--workbench-secondary); font-size: 11px; line-height: 1.4; }
-.workbench-page .workbench-message-references > button { width: 80px; height: 80px; min-height: 0; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: transparent; box-shadow: none; }
+.workbench-page .workbench-message-references > button:not(.workbench-file-reference) { width: 80px; height: 80px; min-height: 0; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: transparent; box-shadow: none; }
 .workbench-message-references img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.workbench-reference-dialog .ui-dialog-body > img { display: block; max-width: 100%; max-height: 70dvh; margin: auto; object-fit: contain; }
-.dialog.ui-dialog:is(.workbench-settings-dialog, .workbench-changes-dialog, .workbench-reference-dialog) {
+.dialog.ui-dialog:is(.workbench-settings-dialog, .workbench-changes-dialog, .workbench-reference-dialog, .workbench-file-preview-dialog) {
   border: 1px solid var(--workbench-border); border-radius: 16px; background: var(--panel); color: var(--ink);
   box-shadow: 0 12px 40px var(--workbench-overlay); backdrop-filter: none; -webkit-backdrop-filter: none;
 }
-.dialog:is(.workbench-settings-dialog, .workbench-changes-dialog, .workbench-reference-dialog)::backdrop { background: var(--workbench-overlay); backdrop-filter: none; }
-.dialog.ui-dialog:is(.workbench-settings-dialog, .workbench-changes-dialog, .workbench-reference-dialog) > .ui-dialog-header { border-bottom-color: var(--line); }
-.dialog.ui-dialog:is(.workbench-settings-dialog, .workbench-changes-dialog, .workbench-reference-dialog) > .ui-dialog-footer { border-top-color: var(--line); }
-.workbench-event.assistant { margin: 22px 0; font-size: 15px; line-height: 1.8; }
-.workbench-markdown { overflow-wrap: anywhere; }
-.workbench-markdown > :first-child { margin-top: 0; }
-.workbench-markdown > :last-child { margin-bottom: 0; }
-.workbench-markdown p { margin: 12px 0; }
-.workbench-markdown h1, .workbench-markdown h2, .workbench-markdown h3 { margin: 24px 0 10px; line-height: 1.4; font-size: 18px; }
-.workbench-markdown ul, .workbench-markdown ol { padding-left: 24px; }
-.workbench-markdown li { margin: 5px 0; }
-.workbench-markdown a { color: var(--workbench-link); text-decoration: underline; }
-.workbench-markdown code { padding: 2px 5px; background: var(--bg); border-radius: 4px; font-size: .9em; }
-.workbench-markdown pre code { padding: 0; background: transparent; }
-.workbench-markdown blockquote { margin: 16px 0; border-left: 3px solid var(--line); padding-left: 16px; color: var(--muted); }
-.workbench-markdown img { max-width: 100%; border-radius: 12px; }
-.workbench-markdown pre { max-width: 100%; }
+.dialog:is(.workbench-settings-dialog, .workbench-changes-dialog, .workbench-reference-dialog, .workbench-file-preview-dialog)::backdrop { background: var(--workbench-overlay); backdrop-filter: none; }
+.dialog.ui-dialog:is(.workbench-settings-dialog, .workbench-changes-dialog, .workbench-reference-dialog, .workbench-file-preview-dialog) > .ui-dialog-header { border-bottom-color: var(--line); }
+.dialog.ui-dialog:is(.workbench-settings-dialog, .workbench-changes-dialog, .workbench-reference-dialog, .workbench-file-preview-dialog) > .ui-dialog-footer { border-top-color: var(--line); }
+.workbench-file-preview { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; line-height: 1.6; }
+.workbench-file-preview-frame { width: 100%; height: min(68vh, 720px); border: 0; border-radius: 8px; background: #fff; }
+/* The picture is the window. Same viewport cap on the dialog and the image, so a wide
+   screenshot scales down instead of growing a scrollbar inside another card. */
+.dialog.ui-dialog.workbench-reference-dialog {
+  width: max-content; max-width: min(1200px, calc(100vw - 64px)); max-height: calc(100dvh - 64px);
+  padding: 0; border: 0; border-radius: 12px; background: #fff; overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+.dialog.ui-dialog.workbench-reference-dialog::backdrop { background: rgba(0, 0, 0, 0.78); backdrop-filter: none; }
+.dialog.ui-dialog.workbench-reference-dialog > .ui-dialog-header {
+  position: fixed; top: 16px; right: 16px; z-index: 2; width: auto; min-height: 0;
+  margin: 0; padding: 0; border: 0; background: transparent; pointer-events: none;
+}
+.dialog.ui-dialog.workbench-reference-dialog > .ui-dialog-header > div {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+}
+.dialog.ui-dialog.workbench-reference-dialog > .ui-dialog-header > .icon-only {
+  pointer-events: auto; width: 36px; height: 36px; margin: 0; border: 0; border-radius: 999px;
+  background: #fff; color: #1a1a1a; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+.dialog.ui-dialog.workbench-reference-dialog > .ui-dialog-header > .icon-only:hover:not(:disabled) { background: #f2f2f2; color: #1a1a1a; }
+.workbench-reference-stage { display: block; margin: 0; padding: 0; overflow: hidden; background: transparent; }
+.workbench-reference-stage > img {
+  display: block; width: auto; height: auto;
+  max-width: min(1200px, calc(100vw - 64px)); max-height: calc(100dvh - 64px);
+  object-fit: contain; border-radius: 0; background: #fff; box-shadow: none;
+}
+@media (max-width: 600px), (max-height: 640px) {
+  .dialog.ui-dialog.workbench-reference-dialog,
+  .workbench-reference-stage > img { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+}
+.workbench-event.assistant, .workbench-reasoning { margin: 22px 0; font-size: 15px; line-height: 1.8; }
+.workbench-page .workbench-process-details { margin: 12px 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; }
+.workbench-process-details > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; min-height: 28px; flex-wrap: wrap; }
+.workbench-process-details > summary::-webkit-details-marker { display: none; }
+.workbench-process-details > summary > svg { flex-shrink: 0; }
+.workbench-process-details[open] > summary > svg { transform: rotate(90deg); }
+.workbench-process-details > .workbench-execution { margin-block: 8px; }
+.workbench-page details.workbench-reasoning { margin: 10px 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.workbench-reasoning > summary { display: flex; gap: 10px; align-items: baseline; cursor: pointer; list-style: none; min-width: 0; }
+.workbench-reasoning > summary::-webkit-details-marker { display: none; }
+.workbench-reasoning > summary::before { content: '›'; flex-shrink: 0; }
+.workbench-reasoning[open] > summary::before { content: '⌄'; }
+.workbench-reasoning > summary > span:first-child { flex-shrink: 0; }
+.workbench-reasoning-preview { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.workbench-reasoning[open] .workbench-reasoning-preview { display: none; }
+.workbench-reasoning > .workbench-markdown { margin: 8px 0 8px 18px; font-size: 12px; }
+.workbench-failure-count { color: var(--bad); font-size: 12px; }
+.workbench-execution-warning { display: flex; gap: 8px; margin: 8px 0 14px; color: var(--bad); font-size: 12px; min-width: 0; }
+.workbench-execution-warning > svg { flex-shrink: 0; margin-top: 3px; }
+.workbench-execution-warning > div { min-width: 0; }
+.workbench-execution-warning p { margin: 3px 0; overflow-wrap: anywhere; }
+.workbench-page .workbench-execution-warning button { display: block; border: 0; background: transparent; padding: 2px 0; min-height: 0; color: inherit; font-size: 12px; text-decoration: underline; }
 .workbench-turn-state { color: var(--muted); font-size: 12px; margin: 12px 0; }
 .workbench-turn-state[data-state="completed"] { display: none; }
 .workbench-turn-state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; min-width: 0; padding: 8px 0; }
@@ -168,6 +218,26 @@
 @keyframes workbench-working-pulse { 50% { opacity: .3; } }
 .workbench-page button.workbench-earlier-activity { display: block; min-height: var(--h-sm); margin: 0 0 4px; padding: 3px 0; border: 0; background: transparent; box-shadow: none; color: var(--muted); font-size: 12px; }
 .workbench-page button.workbench-earlier-activity:hover { color: var(--ink); }
+.workbench-process { margin: 2px 0 4px; overflow-anchor: none; }
+.workbench-page button.workbench-process-toggle {
+  display: flex; align-items: center; gap: 4px; width: fit-content; max-width: 100%;
+  min-height: 0; margin: 0; padding: 2px 0; border: 0; background: transparent; box-shadow: none;
+  color: var(--workbench-caption); font-size: 13px; font-weight: 400; cursor: pointer;
+}
+.workbench-process-toggle > svg { flex-shrink: 0; transition: transform .26s cubic-bezier(.22, 1, .36, 1); }
+.workbench-process-toggle[aria-expanded="true"] > svg { transform: rotate(90deg); }
+.workbench-page button.workbench-process-toggle:hover { color: var(--ink); background: transparent; }
+.workbench-process-toggle:focus-visible { outline: 2px solid var(--workbench-outline); outline-offset: 3px; border-radius: 4px; }
+.workbench-process-rule { height: 1px; margin: 8px 0 12px; background: var(--workbench-border); }
+.workbench-process-body {
+  display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden;
+  transition: grid-template-rows .26s cubic-bezier(.22, 1, .36, 1), opacity .2s ease, visibility 0s linear .26s;
+}
+.workbench-process[data-open] .workbench-process-body {
+  grid-template-rows: 1fr; opacity: 1; visibility: visible;
+  transition: grid-template-rows .26s cubic-bezier(.22, 1, .36, 1), opacity .22s ease, visibility 0s;
+}
+.workbench-process-body-inner { min-height: 0; overflow: hidden; }
 .workbench-execution { font-size: 12px; margin: 16px 0; }
 .workbench-execution > summary { padding: 3px 0; }
 .workbench-page .workbench-execution[open] { padding: 0; background: transparent; border-radius: 0; }
@@ -207,7 +277,7 @@
   color: var(--ink); font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 12px; line-height: 1.65; tab-size: 2;
 }
-@media (prefers-reduced-motion: reduce) { .workbench-execution > summary > svg, .workbench-operation-chevron { transition: none; } .workbench-working-dot { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .workbench-execution > summary > svg, .workbench-process-toggle > svg, .workbench-operation-chevron, .workbench-process-body { transition: none; } .workbench-working-dot { animation: none; } }
 .workbench-page[data-c-surface="workbench"] .workbench-composer, .workbench-page .workbench-launcher {
   width: min(760px, calc(100% - 48px)); margin: 8px auto 0; padding: 12px 14px 10px;
   border: 1px solid var(--workbench-border); border-radius: 22px; background: var(--panel);
@@ -310,5 +380,5 @@
   .workbench-composer-toolbar .workbench-project-chip { max-width: 96px; }
 }
 @media (min-width: 901px) and (max-width: 1100px) {
-  .workbench-page[data-c-surface="workbench"] .workbench-layout { grid-template-columns: 200px minmax(0, 1fr) 240px; }
+  .workbench-page[data-c-surface="workbench"] .workbench-layout { grid-template-columns: 200px minmax(0, 1fr); }
 }

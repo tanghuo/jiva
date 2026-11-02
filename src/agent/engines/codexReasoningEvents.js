@@ -4,6 +4,8 @@ export function createCodexReasoningEvents(onEvent) {
   const parts = new Map();
   async function emit(messageId, kind, partIndex, text, snapshot = false) {
     if (typeof text !== 'string') return;
+    // An omitted/empty final block is not a retraction of streamed content.
+    if (snapshot && !text.trim()) return;
     const key = JSON.stringify([messageId, kind, partIndex]);
     const previous = parts.get(key) || '';
     if (snapshot && text === previous || !snapshot && !text) return;
