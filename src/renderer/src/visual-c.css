@@ -13,7 +13,7 @@ button.primary:hover:not(:disabled), a.button.primary:hover {
   background: var(--accent-hover);
   color: var(--on-accent);
 }
-button:not(.icon-only):not(.text-button):not(.danger):not(.danger-quiet):not(.primary):not(:where(.workbench-page *, .workbench-changes-dialog *, .workbench-settings-dialog *, .workbench-reference-dialog *, .quota-float *, .wiki-album-tile-open, .wiki-album-viewer *)),
+button:not(.icon-only):not(.text-button):not(.danger):not(.danger-quiet):not(.primary):not(:where(.workbench-page *, .workbench-changes-dialog *, .workbench-settings-dialog *, .workbench-reference-dialog *, .quota-float *, .wiki-album-tile-open, .wiki-album-viewer *, .jiva-demo *, .jiva-source-dialog *, .jiva-git-dialog *)),
 a.button:not(.primary):not(.text-button) {
   border-radius: var(--r-pill);
 }

@@ -42,6 +42,7 @@ import { createMagnetImportRepository } from './data/magnetImportRepository.js';
 import { createMagnetImportService } from './application/magnetImportService.js';
 import { createMagnetImportStore } from './assets/magnetImportStore.js';
 import { create115Adapter } from './adapters/pan115.js';
+import { createCodeProjectsService } from './application/codeProjects/service.js';
 import { importLimits as validateImportLimits } from '../shared/domain/magnetImport.js';
 
 const projectRoot = path.resolve(import.meta.dirname, "../..");
@@ -112,6 +113,7 @@ export async function createServer(options = {}) {
   const aionuiExperiment = createAionuiExperiment({ root: projectRoot, dataDir });
   const quota = await createQuotaService({repo:createQuotaRepository(db),dataDir,executionConfig:()=>organization.executionConfig(),...(options.quotaReaders ? {readers:options.quotaReaders} : {})});
   const services = {
+    codeProjects: createCodeProjectsService({ defaultRoot: projectRoot }),
     magnetImports,
     quota,
     aionuiExperiment,
@@ -180,6 +182,7 @@ export async function createServer(options = {}) {
     get credentialFile() { return credentialsPath; },
     close() {
       closing ||= (async () => {
+        await services.codeProjects.shutdown();
         await magnetImports.close();
         await quota.close();
         await aionuiExperiment.close().catch(error => console.error('AionUi shutdown was not confirmed:', error.message));

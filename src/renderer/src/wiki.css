@@ -838,18 +838,40 @@ p.wiki-error > button ~ button { margin-left: 0; }
 .wiki-album-grid-stage { position: relative; min-width: 0; }
 .wiki-album-grid-stage.is-strip-stage {
   --album-strip-max: min(860px, 100%);
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  height: var(--album-strip-height, calc(100dvh - 220px));
+  min-height: 0;
+}
+.wiki-album-strip-scroller {
+  overflow-anchor: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto; /* wheel / trackpad / keyboard still scroll */
+  overscroll-behavior: contain;
+  /* Thumbnail navigation provides the seek UI. */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+  padding-right: 0;
+}
+.wiki-album-strip-scroller::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 .wiki-album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--sp-3); }
 .wiki-album-grid.is-strip {
+  position: relative;
   grid-template-columns: minmax(0, 1fr);
   width: var(--album-strip-max, min(860px, 100%));
-  max-width: 100%;
+  max-width: calc(100% - 28px);
   margin-inline: auto;
   gap: 2px; /* comic continuous: nearly seamless */
   align-items: start;
+  box-sizing: border-box;
 }
 .wiki-album-grid.is-strip.is-managing { gap: var(--sp-3); }
 .wiki-album-tile { display: grid; gap: var(--sp-2); min-width: 0; }
@@ -870,12 +892,29 @@ p.wiki-error > button ~ button { margin-left: 0; }
   object-fit: contain; /* original aspect, no crop */
   vertical-align: top;
 }
+
+/* Continuous, square-edged image minimap with a draggable viewport. */
+.wiki-album-minimap { position: absolute; top: 0; right: 0; bottom: 0; width: 80px; z-index: 5; display: flex; flex-direction: column; padding: 0; gap: 0; border: 0; border-radius: 0; background: transparent; }
+.wiki-album-minimap-scroller { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; touch-action: pan-y; cursor: grab; user-select: none; }
+.wiki-album-minimap-scroller:active { cursor: grabbing; }
+.wiki-album-minimap-scroller::-webkit-scrollbar { display: none; }
+.wiki-album-minimap-content { position: relative; background: var(--media-bg); }
+.wiki-album-minimap-content > [data-minimap-index] { position: absolute; left: 0; width: 100%; padding: 0; border: 0; border-radius: 0; overflow: hidden; background: transparent; }
+.wiki-album-minimap-content img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 0; pointer-events: none; }
+.wiki-album-minimap-content [data-minimap-index] span { position: absolute; bottom: 0; right: 0; padding: 0 3px; border-radius: 0; background: rgb(0 0 0 / .55); color: white; font-size: 10px; line-height: 1.5; font-variant-numeric: tabular-nums; pointer-events: none; }
+.wiki-album-minimap-viewport { position: absolute; left: 0; width: 100%; border: 1px solid color-mix(in srgb, var(--ink) 65%, transparent); background: color-mix(in srgb, var(--ink) 20%, transparent); pointer-events: none; border-radius: 0; }
+.wiki-album-minimap-count { text-align: center; padding: 4px 0; color: var(--ink); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
+.wiki-album-strip-scroller { margin-right: 92px; }
+@media (max-width: 600px) {
+  .wiki-album-minimap { width: 52px; }
+  .wiki-album-strip-scroller { margin-right: 60px; }
+}
+
 .wiki-album-strip-progress {
-  position: sticky;
-  bottom: 16px;
+  position: absolute;
+  right: 104px;
+  bottom: 14px;
   z-index: 4;
-  align-self: flex-end;
-  margin: -40px 8px 8px 0;
   width: fit-content;
   display: inline-flex;
   align-items: center;
@@ -938,8 +977,9 @@ p.wiki-error > button ~ button { margin-left: 0; }
   .wiki-album-tile-open:hover .wiki-album-tile-number { opacity: 1; }
 }
 .wiki-album-tile-open:focus-visible .wiki-album-tile-number { opacity: 1; }
-.wiki-album-page .wiki-album-grid.is-strip { grid-template-columns: minmax(0, 1fr); justify-self: center; width: 100%; max-width: var(--album-strip-width, 1000px); gap: 12px; }
+.wiki-album-page .wiki-album-grid.is-strip { grid-template-columns: minmax(0, 1fr); justify-self: center; width: 100%; max-width: var(--album-strip-width, 1000px); gap: 2px; }
 .wiki-album-grid.is-strip .wiki-album-tile-open img { height: auto; object-fit: contain; }
+.wiki-album-grid.is-strip .wiki-album-tile-actions { height: 36px; flex-wrap: nowrap; }
 
 /* The native modal owns focus and scroll; YARL owns image gestures and transforms. */
 .wiki-album-viewer {
@@ -1052,7 +1092,7 @@ p.wiki-error > button ~ button { margin-left: 0; }
 .canvas-card.is-album .canvas-album span { position: absolute; right: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 72%, transparent); color: #fff; font-size: 12px; font-weight: 600; }
 
 .wiki-main[data-c-surface="album"] { background: transparent; }
-.wiki-main.is-album:has(.wiki-album-grid.is-strip) { max-width: none; }
+.wiki-main.is-album:has(.wiki-album-grid.is-strip) { max-width: none; padding-bottom: 12px; }
 .wiki-album-import-status {
   position: fixed; right: 24px; bottom: 24px; z-index: 150;
   width: min(360px, calc(100vw - 32px)); max-height: 45vh; overflow: auto;

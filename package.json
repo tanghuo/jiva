@@ -39,6 +39,8 @@
     "sqlite-vec": "0.1.9"
   },
   "devDependencies": {
+    "@git-diff-view/react": "^0.1.8",
+    "@tomplum/react-git-log": "^3.5.1",
     "@vitejs/plugin-react": "^5.0.0",
     "@xyflow/react": "^12.11.6",
     "concurrently": "^9.1.0",
@@ -47,6 +49,7 @@
     "electron-builder": "^25.1.8",
     "katex": "^0.16.47",
     "lucide-react": "^0.468.0",
+    "mind-elixir": "^5.15.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",

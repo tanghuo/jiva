@@ -37,10 +37,12 @@ const WorkflowApp = lazy(() => import('./features/workflow/WorkflowApp.jsx'));
 const MagnetImports = lazy(() => import('./MagnetImports.jsx'));
 const AgentWorkbench = lazy(() => import('./features/agentWorkbench/AgentWorkbench.jsx'));
 const AionuiExperiment = lazy(() => import('./features/aionui/AionuiExperiment.jsx'));
+const CodeProjects = lazy(() => import('./features/codeProjects/CodeProjects.jsx'));
 // Local launches open the workbench; explicit links and LAN access keep their destinations.
 const currentSection = () => {
   if ((window.location.hash || "").startsWith("#shares")) return "shares";
   if (lanGuest) return "wiki";
+  if ((window.location.hash || '').startsWith('#code-projects')) return 'code-projects';
   if ((window.location.hash || '').startsWith('#imports')) return 'imports';
   if ((window.location.hash || '').startsWith('#aionui')) return 'aionui';
   if ((window.location.hash || '').startsWith('#workflow')) return 'workflow';
@@ -289,6 +291,7 @@ export default function App() {
       <WikiApp readOnly={readOnly} tabRequest={wikiTabRequest} onTabChange={wikiTabChanged} onBusyChange={setUploading} workspaceNavigation={workspaceNavigation} searchRequest={searchRequest}
         onAddReference={lanGuest ? undefined : addReference} onAskAgent={lanGuest ? undefined : askAgent} externalRevision={wikiRevision} onChanged={refreshWiki} openRequest={openRequest} spaceProps={spaceProps} spaceSwitching={spaceSwitching} />
     </Activity>}
+    {section === 'code-projects' && !lanGuest && <div className="wiki-shell code-project-shell"><WikiSidebar activeTab="code-projects" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="代码项目"><Suspense fallback={<p role="status">正在打开代码项目…</p>}><CodeProjects /></Suspense></PageErrorBoundary></div>}
     {section === "shares" && <div className="wiki-shell"><WikiSidebar activeTab="shares" readOnly={lanGuest} onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = "wiki"; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><TemporaryShares local={!lanGuest} /></div>}
     {section === 'imports' && !lanGuest && <div className="wiki-shell"><WikiSidebar activeTab="imports" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="磁力导入"><Suspense fallback={<p role="status">正在打开导入任务…</p>}><MagnetImports spaces={spaces} currentSpaceId={currentSpaceId} onOpen={browseSource} onChanged={refreshWiki} /></Suspense></PageErrorBoundary></div>}
     {visited.has('workflow') && !lanGuest && <Activity mode={section === 'workflow' ? 'visible' : 'hidden'}><div className="wiki-shell"><WikiSidebar activeTab="workflow" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }} {...spaceProps}>{workspaceNavigation}</WikiSidebar><PageErrorBoundary label="工作流"><Suspense fallback={<p role="status">正在打开工作流…</p>}><WorkflowApp /></Suspense></PageErrorBoundary></div></Activity>}

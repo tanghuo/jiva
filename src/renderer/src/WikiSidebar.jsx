@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, ChevronDown, FileText, FlaskConical, ImageIcon, Images, Video, Layers, MoreHorizontal, Network, Trash2, Share2, Workflow } from "lucide-react";
+import { Bot, ChevronDown, FileText, FlaskConical, ImageIcon, Images, Video, Layers, MoreHorizontal, Network, Trash2, Share2, Workflow, FolderGit2 } from "lucide-react";
 import SpaceSwitcher from "./SpaceSwitcher.jsx";
 
 // Content sections shown under 「我的内容」. The trash sits at the bottom of the sidebar.
@@ -20,7 +20,7 @@ export default function WikiSidebar({
 }) {
   const local = !['read-only', 'lan-edit'].includes(document.querySelector('meta[name="wiki-access"]')?.content);
   const [utilitiesOpen, setUtilitiesOpen] = useState(false);
-  const moreActive = activeTab === "aionui" || activeTab === "shares";
+  const moreActive = activeTab === "aionui" || activeTab === "shares" || activeTab === 'code-projects';
   const [moreOpen, setMoreOpen] = useState(moreActive);
   const nav = useRef(null);
   // On phones the navigation is one scrolling row; keep the current page in view.
@@ -47,6 +47,7 @@ export default function WikiSidebar({
           <button type="button" className={`nav-item wiki-sidebar-more-toggle ${moreActive && !moreOpen ? "active" : ""}`} aria-expanded={moreOpen} aria-controls="wiki-sidebar-more-items" onClick={() => setMoreOpen((current) => !current)}><MoreHorizontal size={18} /><span>更多</span><ChevronDown size={15} className="wiki-sidebar-more-chevron" aria-hidden="true" /></button>
           <div id="wiki-sidebar-more-items" className="wiki-sidebar-more-items" hidden={!moreOpen}>
             {shareEntry}
+            <a className={`nav-item ${activeTab === 'code-projects' ? 'active' : ''}`} href="#code-projects" aria-current={activeTab === 'code-projects' ? 'page' : undefined} onClick={guard}><FolderGit2 size={18} /><span>Jiva 源码 Demo</span></a>
             <a className={`nav-item ${activeTab === 'aionui' ? 'active' : ''}`} href="#aionui" aria-current={activeTab === 'aionui' ? 'page' : undefined} onClick={guard}><FlaskConical size={18} /><span>AionUi 实验版</span></a>
           </div>
         </div> : shareEntry}

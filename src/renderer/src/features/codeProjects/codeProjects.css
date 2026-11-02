@@ -1,0 +1,117 @@
+.jiva-demo { min-width:0; padding:28px 32px; color:var(--ink); }
+.jiva-demo .page-header-actions { gap:var(--sp-2); }
+.jiva-perspectives { display:flex; align-items:center; gap:var(--sp-2); margin:var(--sp-6) 0; overflow-x:auto; }
+.jiva-perspectives>button { flex-shrink:0; height:var(--h-md); border:0; background:transparent; color:var(--muted); box-shadow:none; padding-inline:var(--sp-3); }
+.jiva-perspectives>button[aria-pressed=true] { background:var(--ink); color:var(--panel); }
+.jiva-perspectives>span { width:1px; height:18px; margin-inline:var(--sp-2); background:var(--line-strong); flex-shrink:0; }
+.jiva-perspectives small { white-space:nowrap; color:var(--subtle); font-size:var(--fs-caption); }
+.jiva-workspace { display:grid; grid-template-columns:minmax(0,1fr) 300px; min-height:650px; border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden; background:var(--panel); }
+.jiva-map-section { display:flex; flex-direction:column; min-width:0; }
+.jiva-map-heading { display:flex; align-items:flex-start; gap:var(--sp-4); padding:var(--sp-6); border-bottom:1px solid var(--line); }
+.jiva-map-heading>div:first-child { flex:1; min-width:0; }
+.jiva-eyebrow { margin:0 0 var(--sp-3); color:var(--accent); font-size:var(--fs-caption); font-weight:600; }
+.jiva-map-heading h2 { margin:0 0 var(--sp-3); font-size:var(--fs-dialog); letter-spacing:-.02em; line-height:var(--leading-tight); }
+.jiva-map-heading p:last-child { margin:0; max-width:560px; color:var(--muted); font-size:var(--fs-small); line-height:var(--leading-relaxed); }
+.jiva-map-heading .ui-segmented { flex-shrink:0; }
+.jiva-map,.jiva-mind { position:relative; flex:1; min-height:420px; background:var(--panel); }
+.jiva-map-hint { position:absolute; left:var(--sp-6); bottom:var(--sp-4); font-size:var(--fs-caption); color:var(--subtle); pointer-events:none; }
+.jiva-map .react-flow__controls { left:auto; right:var(--sp-3); bottom:var(--sp-3); }
+.jiva-map .react-flow__controls-button { background:var(--panel); color:var(--muted); border-color:var(--line); }
+.jiva-map .react-flow__handle { opacity:0; pointer-events:none; }
+.jiva-map .react-flow__node-module { pointer-events:all; }
+.jiva-module { display:flex; align-items:flex-start; gap:var(--sp-3); width:210px; padding:var(--sp-4); height:auto; border:1px solid var(--line-strong); border-radius:var(--r-lg); background:var(--panel); color:var(--ink); text-align:start; box-shadow:none; transition:opacity var(--duration); font-family:var(--font-sans); }
+.jiva-module>span:last-of-type { display:flex; flex-direction:column; gap:var(--sp-2); min-width:0; }
+.jiva-module small { font-size:var(--fs-caption); color:var(--muted); font-weight:400; }
+.jiva-module strong { font-size:var(--fs-section); font-weight:600; }
+.jiva-module code { font-size:10px; color:var(--subtle); overflow-wrap:anywhere; font-weight:400; }
+.jiva-module-icon { padding-top:var(--sp-1); color:var(--muted); }
+.jiva-module.is-selected { border-color:var(--accent); background:var(--accent-soft); box-shadow:var(--e-1); }
+.jiva-module.is-selected .jiva-module-icon { color:var(--accent); }
+.jiva-module.is-muted { opacity:.38; }
+.jiva-module.is-selected.is-muted { opacity:1; }
+.jiva-mobile-map { display:none; }
+.jiva-map-footer { display:flex; justify-content:space-between; gap:var(--sp-4); padding:var(--sp-4) var(--sp-6); border-top:1px solid var(--line); color:var(--subtle); font-size:var(--fs-caption); }
+.jiva-steps { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); border-top:1px solid var(--line); }
+.jiva-steps>button { display:flex; flex-direction:column; align-items:flex-start; gap:var(--sp-2); height:auto; min-height:var(--h-lg); padding:var(--sp-4); border:0; border-radius:0; border-right:1px solid var(--line); background:transparent; text-align:start; box-shadow:none; white-space:normal; }
+.jiva-steps>button:last-child { border-right:0; }
+.jiva-steps>button[aria-current=step] { background:var(--accent-soft); box-shadow:inset 0 2px var(--accent); }
+.jiva-steps span { color:var(--accent); font-family:var(--font-mono); font-size:var(--fs-caption); }
+.jiva-steps strong { font-size:var(--fs-small); font-weight:500; }
+.jiva-steps small { font-size:var(--fs-caption); color:var(--muted); }
+.jiva-inspector { display:flex; flex-direction:column; min-width:0; border-left:1px solid var(--line); background:var(--panel-2); }
+.jiva-inspector-toolbar { display:flex; align-items:center; gap:var(--sp-4); padding:var(--sp-3) var(--sp-6); border-bottom:1px solid var(--line); }
+.jiva-inspector-toolbar>button { height:var(--h-sm); padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; font-size:var(--fs-caption); color:var(--muted); }
+.jiva-inspector-toolbar>button[aria-pressed=true] { color:var(--ink); font-weight:600; }
+.jiva-module-notes { padding:var(--sp-6); }
+.jiva-module-notes h2 { margin:0 0 var(--sp-4); font-size:var(--fs-dialog); line-height:var(--leading-tight); }
+.jiva-module-notes>p:not(.jiva-eyebrow) { font-size:var(--fs-small); color:var(--muted); line-height:1.9; margin:0 0 var(--sp-4); }
+.jiva-module-path { display:block; font-size:var(--fs-caption); color:var(--subtle); overflow-wrap:anywhere; }
+.jiva-module-notes h3 { margin:var(--sp-8) 0 var(--sp-3); font-size:var(--fs-caption); color:var(--muted); font-weight:500; }
+.jiva-source-link { display:flex; gap:var(--sp-3); align-items:center; width:100%; text-align:start; height:auto; min-height:var(--h-lg); padding:var(--sp-3) 0; border:0; border-bottom:1px solid var(--line); border-radius:0; background:transparent; box-shadow:none; }
+.jiva-source-link>span { display:flex; flex:1; flex-direction:column; gap:var(--sp-1); min-width:0; }
+.jiva-source-link strong { font-size:var(--fs-small); font-weight:500; }
+.jiva-source-link code { font-size:var(--fs-caption); color:var(--subtle); overflow-wrap:anywhere; white-space:normal; }
+.jiva-source-link>svg { color:var(--subtle); flex-shrink:0; }
+.jiva-step-navigation { display:flex; justify-content:space-between; margin-top:var(--sp-8); }
+.jiva-source-panel { display:flex; flex-direction:column; min-width:0; flex:1; overflow:hidden; }
+.jiva-source-dialog.ui-dialog { width:min(1100px,calc(100vw - 48px)); max-width:none; }
+.jiva-source-dialog.ui-dialog,.jiva-git-dialog.ui-dialog { background:var(--panel); backdrop-filter:none; -webkit-backdrop-filter:none; }
+.jiva-source-dialog .jiva-source { background:var(--panel); }
+.jiva-map .react-flow__edge-text { font-family:var(--font-sans); }
+.jiva-source-dialog .ui-dialog-header p { overflow-wrap:anywhere; }
+.jiva-source-dialog .jiva-source { max-height:70vh; min-height:360px; }
+.jiva-source-heading { display:flex; align-items:center; justify-content:space-between; padding:var(--sp-3); gap:var(--sp-2); color:var(--subtle); font-size:var(--fs-caption); }
+.jiva-source-panel>strong { padding:var(--sp-2) var(--sp-4) var(--sp-4); font-size:var(--fs-caption); font-weight:500; overflow-wrap:anywhere; border-bottom:1px solid var(--line); }
+.jiva-source { margin:0; overflow:auto; font-family:var(--font-mono); font-size:var(--fs-caption); line-height:1.9; max-height:560px; flex:1; background:var(--panel); padding-block:var(--sp-3); }
+.jiva-source>span { display:flex; min-width:max-content; }
+.jiva-source i { display:inline-block; width:38px; text-align:right; padding-inline-end:var(--sp-3); font-style:normal; color:var(--subtle); user-select:none; flex-shrink:0; }
+.jiva-source code { padding-inline-end:var(--sp-4); }
+.jiva-source .is-target { background:var(--accent-soft); }
+.jiva-directory { padding:var(--sp-4); overflow:auto; max-height:600px; font-size:var(--fs-caption); }
+.jiva-directory>p { color:var(--subtle); margin-top:0; }
+.jiva-directory details>div { padding-inline-start:var(--sp-3); }
+.jiva-directory summary { display:flex; align-items:center; gap:var(--sp-2); padding-block:var(--sp-2); cursor:pointer; }
+.jiva-directory summary:before { content:'›'; color:var(--subtle); }
+.jiva-directory details[open]>summary:before { content:'⌄'; }
+.jiva-tree-file { display:flex; align-items:center; gap:var(--sp-2); height:var(--h-sm); max-width:100%; border:0; background:transparent; padding-inline:var(--sp-1); box-shadow:none; font-size:var(--fs-caption); text-align:start; overflow:hidden; text-overflow:ellipsis; }
+.jiva-demo-footnote { font-size:var(--fs-caption); color:var(--subtle); margin-top:var(--sp-4); }
+.jiva-loading,.jiva-load-error { display:grid; justify-items:center; align-content:center; min-height:450px; font-size:var(--fs-small); color:var(--muted); }
+.jiva-git-dialog.ui-dialog { width:min(1200px,calc(100vw - 48px)); max-width:none; }
+.jiva-git-dialog .ui-dialog-body { overflow:auto; padding:var(--sp-6); }
+.code-project-git-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-3); margin-bottom:var(--sp-4); }
+.code-project-git-toolbar select { width:auto; min-width:160px; }
+.code-project-git-toolbar input { max-width:260px; }
+.code-project-git-toolbar>span { color:var(--muted); font-size:var(--fs-caption); }
+.code-project-refs { display:flex; gap:var(--sp-2); flex-wrap:wrap; }
+.code-project-refs span { padding:var(--sp-1) var(--sp-2); background:var(--panel-2); font-size:var(--fs-caption); border-radius:var(--r-sm); }
+.code-project-history { overflow:auto; max-height:320px; border:1px solid var(--line); border-radius:var(--r-md); background:var(--panel); margin-top:var(--sp-4); }
+.code-project-commit-row { display:flex; align-items:center; gap:var(--sp-3); height:40px; min-width:580px; padding-inline:var(--sp-3); font-size:var(--fs-caption); cursor:pointer; }
+.code-project-commit-row>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:600px; }
+.code-project-commit-row code { color:var(--muted); }
+.code-project-commit-row small { color:var(--accent); }
+.code-project-git-detail { display:grid; grid-template-columns:230px minmax(0,1fr); border:1px solid var(--line); border-radius:var(--r-md); overflow:hidden; margin-top:var(--sp-4); background:var(--panel); }
+.code-project-git-detail aside { border-right:1px solid var(--line); padding:var(--sp-3); overflow:auto; max-height:420px; }
+.code-project-git-detail h3 { font-size:var(--fs-small); }
+.code-project-git-detail p { font-size:var(--fs-caption); overflow-wrap:anywhere; white-space:pre-wrap; }
+.code-project-git-detail aside button { display:block; width:100%; height:auto; min-height:var(--h-sm); padding:var(--sp-2); margin-block:var(--sp-1); text-align:start; font-size:var(--fs-caption); white-space:normal; overflow-wrap:anywhere; }
+.code-project-git-detail aside button.is-selected { background:var(--accent-soft); }
+.code-project-diff { min-width:0; overflow:auto; max-height:420px; }
+.code-project-diff>p { padding:var(--sp-4); }
+.code-project-file-heading { display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-2); padding:var(--sp-3); font-size:var(--fs-caption); border-bottom:1px solid var(--line); }
+.code-project-file-heading strong { overflow-wrap:anywhere; margin-inline-end:auto; }
+@media(max-width:1200px) { .jiva-workspace { grid-template-columns:minmax(0,1fr) 270px; } .jiva-map-heading { flex-wrap:wrap; } .jiva-map-heading>div:first-child { flex-basis:100%; } .jiva-map-heading .ui-segmented { margin-top:var(--sp-1); } }
+@media(max-width:1050px) { .jiva-demo { padding:24px 16px; } .jiva-workspace { grid-template-columns:minmax(0,1fr); } .jiva-inspector { border-left:0; border-top:1px solid var(--line); } .jiva-module-notes { max-width:650px; } .jiva-map { min-height:430px; } .jiva-source { max-height:420px; } }
+@media(max-width:720px) { .code-project-shell .wiki-sidebar-nav .wiki-sidebar-space-content { display:contents; } .code-project-shell .wiki-sidebar-nav .nav-item { flex:0 0 auto; align-self:center; } .code-project-shell .wiki-sidebar-space-content .wiki-sidebar-bottom { margin-top:0; } .jiva-perspectives small { display:none; } .jiva-map-heading { padding:var(--sp-4); } .jiva-steps { overflow-x:auto; grid-auto-columns:130px; } .jiva-map-footer { flex-wrap:wrap; padding:var(--sp-4); } .jiva-map-hint { left:var(--sp-4); } .jiva-git-dialog.ui-dialog { width:calc(100vw - 24px); } .jiva-git-dialog .ui-dialog-body { padding:var(--sp-3); } .code-project-git-detail { grid-template-columns:1fr; } .code-project-git-detail aside { max-height:180px; border-right:0; border-bottom:1px solid var(--line); } }
+@media(max-width:720px) {
+  .jiva-map { min-height:0; }
+  .jiva-map>.react-flow,.jiva-map-hint { display:none; }
+  .jiva-mobile-map { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--sp-3); padding:var(--sp-4); }
+  .jiva-mobile-module { display:flex; flex-direction:column; align-items:flex-start; width:100%; height:auto; gap:var(--sp-2); padding:var(--sp-3); border-radius:var(--r-md); white-space:normal; text-align:start; }
+  .jiva-mobile-module>span:last-child { display:flex; flex-direction:column; gap:var(--sp-1); min-width:0; }
+  .jiva-mobile-module small { font-size:var(--fs-caption); color:var(--muted); }
+  .jiva-mobile-module strong { font-size:var(--fs-small); }
+  .jiva-mobile-module code { font-size:10px; color:var(--subtle); overflow-wrap:anywhere; }
+  .jiva-mobile-module[aria-pressed=true] { background:var(--accent-soft); border-color:var(--accent); }
+  .jiva-mobile-map>p { grid-column:1/-1; font-size:var(--fs-caption); color:var(--muted); line-height:var(--leading-relaxed); }
+  .jiva-source-dialog.ui-dialog { width:calc(100vw - 24px); }
+}

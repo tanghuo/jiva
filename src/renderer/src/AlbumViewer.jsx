@@ -56,9 +56,11 @@ export default function AlbumViewer({ items, index, onIndexChange, album, onClos
   }, [index, attempt]);
 
   useEffect(() => {
+    const dialog = dialogRef.current;
     const stage = stageRef.current;
     function onWheel(event) {
-      if (event.target.closest(".yarl__navigation_prev, .yarl__navigation_next")) {
+      const navigation = event.target.closest(".yarl__navigation_prev, .yarl__navigation_next");
+      if (navigation || !event.target.closest(viewerContentSelector)) {
         if (!event.deltaY || event.ctrlKey) return;
         event.preventDefault();
         event.stopPropagation();
@@ -69,6 +71,7 @@ export default function AlbumViewer({ items, index, onIndexChange, album, onClos
         current.onIndexChange(next);
         return;
       }
+      if (!event.target.closest(".yarl__slide_current img")) return;
       const control = zoomRef.current;
       const img = stage.querySelector(".yarl__slide_current img");
       if (!control || control.disabled || !img?.naturalWidth || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
@@ -87,8 +90,8 @@ export default function AlbumViewer({ items, index, onIndexChange, album, onClos
       panRef.current = null;
       control.changeZoom(next, true);
     }
-    stage.addEventListener("wheel", onWheel, { passive: false, capture: true });
-    return () => stage.removeEventListener("wheel", onWheel, { capture: true });
+    dialog.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => dialog.removeEventListener("wheel", onWheel, { capture: true });
   }, []);
 
   useLayoutEffect(() => {
@@ -199,7 +202,7 @@ export default function AlbumViewer({ items, index, onIndexChange, album, onClos
       </header>
       <div ref={stageRef} className={`wiki-album-viewer-stage${zoom > 1 ? " is-pannable" : ""}`}
         onPointerDownCapture={(event) => {
-          if (event.pointerType === "touch" || event.button !== 0 || zoomRef.current?.zoom <= 1 || event.target.closest("button, a")) return;
+          if (event.pointerType === "touch" || event.button !== 0 || zoomRef.current?.zoom <= 1 || !event.target.closest(".yarl__slide_current img")) return;
           event.stopPropagation();
           event.currentTarget.focus();
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -276,7 +279,7 @@ export default function AlbumViewer({ items, index, onIndexChange, album, onClos
       {album.tags?.length > 0 && <><h3>图集标签</h3><div className="wiki-album-detail-tags">{album.tags.map((tag) => <span key={tag}>{tag}</span>)}</div></>}
       {meta.sourceUrl && <><h3>来源</h3><a href={meta.sourceUrl} target="_blank" rel="noreferrer" className="wiki-album-detail-source">{meta.sourceUrl}<ArrowUpRight size={15} /></a></>}
       <a className="wiki-album-download" href={apiUrl(`/api/elements/${current.id}/download`)} download><Download size={16} />下载原图</a>
-      <div className="wiki-album-detail-shortcuts"><span>← → 切换图片</span><span>滚轮缩放 · 放大后拖拽</span><span>T 缩略图 · I 详情 · Esc 返回</span></div>
+      <div className="wiki-album-detail-shortcuts"><span>← → 切换图片</span><span>图片上滚轮缩放 · 放大后拖拽</span><span>空白处滚轮切图 · 点击返回</span><span>T 缩略图 · I 详情 · Esc 返回</span></div>
     </aside>}
   </dialog>, document.body);
 }

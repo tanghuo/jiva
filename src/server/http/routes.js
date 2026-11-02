@@ -12,8 +12,9 @@ import { handleAgentWorkbenchRoute } from './agentWorkbenchRoutes.js';
 import { handleAionuiExperimentRoute } from './aionuiExperimentRoutes.js';
 import { handleQuotaRoute } from './quotaRoutes.js';
 import { handleMagnetImportRoute } from './magnetImportRoutes.js';
+import { handleCodeProjectRoute } from './codeProjectRoutes.js';
 
-export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, workflow, agentWorkbench, agentTasks, aionuiExperiment, quota, magnetImports, usage, instance, authentication, rendererDist, access = "local" }) {
+export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, workflow, agentWorkbench, agentTasks, aionuiExperiment, quota, magnetImports, codeProjects, usage, instance, authentication, rendererDist, access = "local" }) {
   const routes = new Map([
     ["GET /api/token-usage", async (_req, res, url) => {
       const days = Number(url.searchParams.get("days") ?? 7);
@@ -92,6 +93,7 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
       if (req.headers["x-jiva-instance"] && req.headers["x-jiva-instance"] !== instance?.instanceId) {
         throw httpError(409, "Server instance changed; reconnect before retrying");
       }
+      if (codeProjects && await handleCodeProjectRoute(codeProjects, req, res, url, access)) return;
       if (quota && await handleQuotaRoute(quota, req, res, url, access)) return;
       if (magnetImports && await handleMagnetImportRoute(magnetImports, req, res, url, access)) return;
       if (aionuiExperiment && await handleAionuiExperimentRoute(aionuiExperiment, req, res, url, access)) return;
