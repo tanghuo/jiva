@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f5f3ed">
+  <meta name="description" content="从收藏的一本书出发，顺着好奇心，了解一点互联网。Jiva 交互体验原型。">
+  <title>Jiva · 顺着好奇心</title>
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./polish.css">
+  <script src="./research.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到内容</a>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#explore" aria-label="Jiva 首页"><span class="brand-mark">j</span>jiva<span class="brand-dot">.</span></a>
+      <div class="space-label">给好奇心留个位置</div>
+      <nav aria-label="主导航">
+        <a href="#explore" data-page="explore"><span aria-hidden="true">✳</span> 随便看看</a>
+        <a href="#saved" data-page="saved"><span aria-hidden="true">▱</span> 留下的线索 <small id="saved-count">0</small></a>
+        <a href="#sources" data-page="sources"><span aria-hidden="true">▤</span> 这份材料</a>
+        <a href="#research" data-page="research"><span aria-hidden="true">⌘</span> 同类项目调研</a>
+      </nav>
+      <div class="shelf-label">这次的好奇，来自</div>
+      <button class="shelf-item" data-action="source-page"><span class="mini-book">fq</span><span>fq-book<small>认识互联网</small></span><span class="shelf-dot"></span></button>
+      <div class="sidebar-bottom"><span class="small-sun">☼</span><p>一点也好。<br>想起来，再回来。</p><button class="text-button" data-action="about">关于这个 demo ↗</button></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><div>兴趣书架 <span>/</span> <strong id="breadcrumb">认识互联网</strong></div><button class="prototype" data-action="about"><span></span> 体验原型</button></header>
+      <main id="main" tabindex="-1"></main>
+      <footer class="footer"><span>好奇心没有截止日期。</span><span>JIVA EXPLORATIONS · 001</span></footer>
+    </div>
+  </div>
+  <dialog id="reader" aria-labelledby="reader-title"><div id="reader-content"></div></dialog>
+  <dialog id="about" aria-labelledby="about-title"><div class="about-body"><button class="close" data-action="close-about" aria-label="关闭说明">×</button><div class="eyebrow">ABOUT THIS DEMO</div><h2 id="about-title">先体验，再决定。</h2><p>这版验证的是：收藏之后，有人准备好几个值得了解的入口，你可以轻松开始，也可以随时放下。</p><p><strong>这是预先整理的内容与分支互动，没有连接实时 AI。</strong>“换个比喻”“再深入一点”会展示已经写好的讲解；你自己的问题会被保存，不会生成假回答。</p><p>朗读使用浏览器提供的语音，能否发声取决于设备和浏览器。笔记与阅读位置仅保存在当前浏览器；清除浏览器数据会丢失，可导出笔记备份。</p><p>材料入口来自 hoochanlon/fq-book。讲解独立编写，并参考 MDN 核验基础概念。尚未逐章审计整本书，也没有接入 Jiva 正式内容库。</p><button class="primary" data-action="close-about">明白了，去看看</button></div></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

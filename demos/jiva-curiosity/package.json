@@ -1,0 +1,6 @@
+{
+  "name": "jiva-curiosity-demo",
+  "private": true,
+  "type": "module",
+  "scripts": { "preview": "node preview.mjs", "check": "node --check dist/app.js" }
+}

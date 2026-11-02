@@ -1,0 +1,7 @@
+qa/
+node_modules/
+*.log
+
+# This standalone site keeps its source in dist.
+!dist/
+!dist/**

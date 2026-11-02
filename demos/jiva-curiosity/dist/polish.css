@@ -1,0 +1,16 @@
+.feature-card h2 { text-wrap: balance; max-width: 470px; }
+.reader-article, .reader-aside { min-width: 0; }
+.reader-grid { width: 100%; }
+.reader-article .diagram-node { min-width: 0; }
+.reader-article .diagram-node b { overflow-wrap: anywhere; }
+.reader-article .diagram-line { min-width: 12px; }
+.book-cover p { position: relative; z-index: 1; }
+@media(max-width:650px) {
+  .reader-grid { grid-template-columns: minmax(0,1fr); }
+  .book-cover h3 { margin: 13px 0 7px; }
+  .book-cover p { margin: 5px 0; }
+  .book-cover .author { font-size: 5px; bottom: 10px; }
+  .source-rail .book-cover:before, .source-rail .book-cover:after { opacity: .5; }
+  .reader-article .diagram { padding-inline: 6px; }
+  .reader-article .diagram-node b { font-size: 16px; }
+}
